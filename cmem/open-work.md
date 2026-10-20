@@ -11,7 +11,11 @@ Only open items. Created 2026-09-20.
    `.cwasm` off), then swap `wasmtime` + `wasmtime-wasi` for `wasmrt-core`; keep `wat` /
    `wasmprinter` / `walrus`. Owner decision that rsxtk goes first with wasmtk (2026-09-20).
 4. **`component-model` feature enabled and unused** — measure the size cost, then remove or record why it stays.
-5. **Siblings still name the pre-move URL `jrmarcum/rsxtk`** (2026-10-20; repo is now
+5. **History carries ~410 MB of build output** (measured 2026-10-20 after a full repack: one pack,
+   416.55 MiB; `target/debug` 245.8 MB / 3106 blobs, `target/package` 164 MB / 90 blobs; source and
+   docs < 3 MB). Committed before `/target` was ignored. Removing it is a history rewrite + force
+   push to `synapticforge1/rsxtk` — 🗓️ OWNER decision; nothing to do until then.
+6. **Siblings still name the pre-move URL `jrmarcum/rsxtk`** (2026-10-20; repo is now
    `synapticforge1/rsxtk`, `overview.md` § Hosting): wasmtk `cmem/vision.md:83`,
    `cmem/polyglot-producers.md:74`, `cmem/roadmap.md:1418`; wasmrt `cmem/loaders.md:28`. Not ours to
    edit (best-practices 8.1). 🔒 Owner, 2026-10-20: these get fixed when wasmtk moves to the org;
