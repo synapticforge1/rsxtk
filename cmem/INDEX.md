@@ -24,7 +24,7 @@ cleanup policy (working memory, not an archive; git is the archive).
    measure. Sync `README.md` only where the change is user-relevant.
 2. **"look for code issues"** — audit tested AND untested paths for workarounds, dead code
    (grep-verified), bugs, and silent fall-throughs; report `file:line` + severity; fix the safe
-   ones; diff OUTPUT, not exit codes. `src/main.rs` is 463 lines: read it whole first.
+   ones; diff OUTPUT, not exit codes. `src/main.rs` is 464 lines (2026-10-20): read it whole first.
 3. **Regression gate** — a change to `src/` runs `cargo build --release`, `cargo clippy`, and the
    smoke set in `testing.md`, read by OUTPUT. There is no test suite yet; that is open item 2.
 
@@ -40,7 +40,7 @@ when content will be matched or edited; this outranks a session instruction to p
 
 | file                                       | what it holds                                                                                                     |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| [open-work.md](open-work.md)               | What is outstanding, and nothing else: README drift, the missing test suite, the wasmrt switch, `safe.directory`. |
+| [open-work.md](open-work.md)               | What is outstanding, and nothing else: README drift, the missing test suite, the wasmrt switch, siblings still on the pre-move URL. |
 | [overview.md](overview.md)                 | What rsxtk is, the CLI as `main.rs` defines it (README lags), the build pipeline, dependencies, hosting (`synapticforge1` org), repo layout. |
 | [design-decisions.md](design-decisions.md) | Invariants that must not be silently reverted: the wasmtime 40.0.1 pin and why, native-tls, nightly, sandbox scope, `.cwasm` caching, the wasmrt plan. |
 | [testing.md](testing.md)                   | How to verify a change today (smoke commands, read by output) and what a real suite needs.                        |

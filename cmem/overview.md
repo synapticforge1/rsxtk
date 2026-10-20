@@ -66,11 +66,11 @@ License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`). Prerequisites: ni
 ```
 rsxtk/
   Cargo.toml  Cargo.lock        version line = the release arm (0.4.4)
-  src/main.rs                   the whole program (463 lines)
+  src/main.rs                   the whole program (464 lines, 2026-10-20; unchanged since 2026-04-20)
   README.md  rsxtk_logo.png     public doc
   LICENSE-MIT  LICENSE-APACHE
-  CLAUDE.md                     gitignored pointer
-  cmem/                         this memory
+  CLAUDE.md                     gitignored pointer (untracked 2026-10-20; was committed empty before)
+  cmem/                         this memory (first committed 2026-10-20); cmem/local/ gitignored
   target/                       build output (gitignored)
 ```
 
