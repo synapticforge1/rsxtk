@@ -28,9 +28,10 @@ cleanup policy (working memory, not an archive; git is the archive).
 3. **Regression gate** — a change to `src/` runs `cargo build --release`, `cargo clippy`, and the
    smoke set in `testing.md`, read by OUTPUT. There is no test suite yet; that is open item 2.
 
-## Tooling — hard rules (owner, workspace-wide, 2026-09-19 / 2026-09-20)
+## Tooling — hard rules (owner, workspace-wide, 2026-09-19 / 2026-09-20; runtime 2026-10-21)
 
-Scripting is Deno/TypeScript (`deno run -A <file.ts>` from the scratchpad) or Rust in-tree. No
+Scripting is Bun/TypeScript (`bun run <file.ts>` from the scratchpad) or Rust in-tree. 🔒 Owner,
+2026-10-21: Deno is going away; Bun replaces it for every script reference. No
 Python. No bash/PowerShell scripts. **No heredocs, ever**, including commit messages
 (`git commit -F <file>`, never `-F -`). Content goes through `Write`/`Edit`. After any scripted edit,
 read back the changed lines. Prefer the `Grep`/`Read`/`Edit` tools over shell `grep`/`cat`/`sed`
