@@ -65,7 +65,7 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
 ## Versioning and release (workspace rule, owner 2026-09-20)
 
 - Semantic Versioning 2.0.0: patch for fixes, minor for backward-compatible additions, major for
-  breaks; no cap, no carry. rsxtk is at `0.4.4`, so consumers' carets treat every minor as
+  breaks; no cap, no carry. rsxtk is at `0.5.0` (2026-10-23), so consumers' carets treat every minor as
   potentially breaking until `1.0.0`, where its API promise begins. Keep a README Breaking Changes
   table as the migration guide (none exists yet).
 - **A bump is gated** (workspace rule, `../../cmem/layout-and-packaging.md` § "The compatibility
@@ -75,6 +75,15 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
   (2026-10-23, `testing.md`); the golden `--help` and the bump script do not yet.
 - The `Cargo.toml` version line is the only source. `README.md` no longer restates it (its
   "New Features in v0.4.2" heading drifted against 0.4.4; it became "Features" on 2026-10-23) —
-  keep version numbers out of the README. `main.rs` still repeats it in `#[command(version =
-  "0.4.4")]`; a bump must change both, or use `env!("CARGO_PKG_VERSION")`.
+  keep version numbers out of the README. Since 0.5.0 `main.rs` takes it from Cargo
+  (`#[command(name = "rsxtk", version)]` = `CARGO_PKG_VERSION`), so a bump is ONE line plus the
+  lockfile's own entry; the `--version` test guards it.
+- **0.5.0 was a minor bump** (2026-10-23): new behaviour (`build.rs`/`rsc/` mirrored, library
+  scripts built as `cdylib`) and fixes; `--help` lists the same 16 commands as 0.4.4 (compared
+  binary to binary), so nothing was removed. A `build.rs` that 0.4.4 ignored now RUNS — a reason
+  not to call it a patch.
+- **The crate excludes `cmem/`** (`exclude` in `Cargo.toml`, 2026-10-23): memory is for working on
+  rsxtk, not for crate users; it stays public on GitHub. `cargo package --list` for 0.5.0:
+  `.cargo_vcs_info.json`, `.gitignore`, `Cargo.lock`, `Cargo.toml`(`.orig`), both licenses,
+  `README.md`, `rsxtk_logo.png`, `src/main.rs`, `tests/cli.rs`.
 - Nothing is published unless the owner says so; `cargo publish` from a clean tree, tag after.

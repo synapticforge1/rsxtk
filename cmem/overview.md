@@ -1,6 +1,6 @@
 # overview.md — what rsxtk is
 
-Read from `README.md`, `Cargo.toml` and `src/main.rs` on 2026-09-20.
+Read from `README.md`, `Cargo.toml` and `src/main.rs` on 2026-09-20; re-measured 2026-10-23.
 
 ## Purpose
 
@@ -10,9 +10,10 @@ project under `.tk/`, compiles to `wasm32-wasip1`, pre-compiles to a `.cwasm` fo
 and runs it in a WASI preview-1 sandbox pre-opened on the script's parent directory. It also runs
 `.wasm`, `.wat` and `.cwasm` directly, and can run a script natively via `cargo -Z script`.
 
-## The CLI as `src/main.rs` defines it (0.4.4)
+## The CLI as `src/main.rs` defines it (0.5.0)
 
-`clap` derive, `rename_all = "lowercase"`. Matches `rsxtk --help` (0.4.4 binary, 2026-10-23);
+`clap` derive, `rename_all = "lowercase"`. Matches `rsxtk --help` (0.5.0 binary, 2026-10-23; the same 16
+commands as 0.4.4);
 `README.md` lists all sixteen since 2026-10-23.
 
 | command    | args                              | does                                                             |
@@ -63,8 +64,11 @@ License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`). Prerequisites: ni
   page keeps the old URL until the next publish). `homepage` was removed 2026-10-23 (Cargo's
   `redundant_homepage` lint: it repeated `repository`). `authors` carries the maintainer
   contact email — the one allowed email (owner, 2026-10-23; `INDEX.md` § Policy).
-- **Publishing**: crates.io crate `rsxtk`, 34 versions 0.1.0 → 0.4.4 (2026-01-06 → 2026-04-20), 9
-  not yanked (crates.io API, 2026-10-23). Published by hand with `cargo publish`; the repo has no
+- **Publishing**: crates.io crate `rsxtk`, 34 versions 0.1.0 → 0.4.4 (2026-01-06 → 2026-04-20), 10
+  not yanked: 0.3.3 and 0.3.6 → 0.4.4 (crates.io API, re-counted 2026-10-23; "9" was a miscount).
+  **0.5.0** bumped and committed 2026-10-23; NOT yet on crates.io — this machine has no crates.io
+  token (no `~/.cargo/credentials.toml`, no `CARGO_REGISTRY_TOKEN`); the owner runs `cargo login`,
+  then `cargo publish` from the clean, pushed tree. Its page will then show the org repository URL. Published by hand with `cargo publish`; the repo has no
   CI and no `.github/`, so no trusted-publishing (OIDC) policy is involved (workspace letter H20
   does not apply). The crates.io API exposes no author/email field — only the publisher's GitHub
   login.
@@ -105,7 +109,7 @@ License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`). Prerequisites: ni
 
 ```
 rsxtk/
-  Cargo.toml  Cargo.lock        version line = the release arm (0.4.4)
+  Cargo.toml  Cargo.lock        version line = the release arm (0.5.0)
   src/main.rs                   the whole program (534 lines, 2026-10-23)
   tests/cli.rs                  end-to-end `cargo test` suite (41 tests; testing.md)
   README.md  rsxtk_logo.png     public doc
