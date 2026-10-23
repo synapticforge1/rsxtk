@@ -47,6 +47,10 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
   never rebuild the name. Before this, every script was a binary and `initmod` failed with E0601.
 - **The manifest is the `---`-fenced TOML header**; `fmt` must preserve it (a formatter that eats
   the header eats the dependencies).
+- **`add`/`remove` match the crate name EXACTLY** (2026-10-23, `dep_key`): a line's name is the
+  text before its first `=` or `.`, unquoted — `serde = …`, `serde.workspace = …`, `"serde" = …`.
+  It was a prefix match before, so `remove serde` also deleted `serde_json`. Limitation kept: a
+  `[dependencies.<name>]` table spanning several lines is not recognised (no `=` on its header).
 
 ## The wasmrt switch (planned, owner decisions)
 
@@ -66,9 +70,11 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
   table as the migration guide (none exists yet).
 - **A bump is gated** (workspace rule, `../../cmem/layout-and-packaging.md` § "The compatibility
   gate"): rsxtk's surface is its CLI — flags, positional shapes, exit codes, output a script may
-  parse. A committed golden `--help` and the smoke set are the snapshot; a bump script diffs them
-  and refuses a patch when a command or flag was removed or reshaped. Needs the test suite first
-  (`open-work.md` item 2).
-- The `Cargo.toml` version line is the only source; `README.md` restates it and has already
-  drifted (0.4.2 vs 0.4.4) — see `open-work.md`.
+  parse. A committed golden `--help` and the test suite are the snapshot; a bump script diffs them
+  and refuses a patch when a command or flag was removed or reshaped. The suite exists
+  (2026-10-23, `testing.md`); the golden `--help` and the bump script do not yet.
+- The `Cargo.toml` version line is the only source. `README.md` no longer restates it (its
+  "New Features in v0.4.2" heading drifted against 0.4.4; it became "Features" on 2026-10-23) —
+  keep version numbers out of the README. `main.rs` still repeats it in `#[command(version =
+  "0.4.4")]`; a bump must change both, or use `env!("CARGO_PKG_VERSION")`.
 - Nothing is published unless the owner says so; `cargo publish` from a clean tree, tag after.

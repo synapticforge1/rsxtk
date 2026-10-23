@@ -27,7 +27,7 @@ and runs it in a WASI preview-1 sandbox pre-opened on the script's parent direct
 | `resource` | `[dir]`                           | create `<dir>/rsc/` (default `.`); a FILE path fails (os error 183). Read at run time via the preopen; mirrored to `.tk/<stem>/src/rsc/` for `include_str!` (2026-10-23) |
 | `bench`    | `<path> [-i N=5]`                 | time N executions                                                 |
 | `add`      | `<path> <crate> [version]`        | add a dependency; missing version fetched from crates.io (`reqwest`, `USER_AGENT`) |
-| `remove`   | `<path> <crate>`                  | remove a dependency                                               |
+| `remove`   | `<path> <crate>`                  | remove a dependency (exact name match since 2026-10-23)           |
 | `list`     | `<path>`                          | list dependencies                                                 |
 | `fmt`      | `<path>`                          | rustfmt the code part, preserving the manifest                    |
 | `optimize` | `-i <input> [-o output]`          | optimize a `.wasm` via `walrus`                                   |
@@ -59,8 +59,9 @@ License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`). Prerequisites: ni
 - Canonical home: **`https://github.com/synapticforge1/rsxtk`**, owned by the `synapticforge1`
   GitHub organization (owner's). Moved there from the personal account `jrmarcum/rsxtk`; the GitHub
   API reports the new `full_name` and the old URL redirects. Use the org URL everywhere new.
-- `Cargo.toml` `repository` / `homepage` / `documentation` name the org URL (fixed 2026-10-20; the
-  crates.io page keeps the old URL until the next publish). `authors` carries the maintainer
+- `Cargo.toml` `repository` / `documentation` name the org URL (fixed 2026-10-20; the crates.io
+  page keeps the old URL until the next publish). `homepage` was removed 2026-10-23 (Cargo's
+  `redundant_homepage` lint: it repeated `repository`). `authors` carries the maintainer
   contact email — the one allowed email (owner, 2026-10-23; `INDEX.md` § Policy).
 - **Publishing**: crates.io crate `rsxtk`, 34 versions 0.1.0 → 0.4.4 (2026-01-06 → 2026-04-20), 9
   not yanked (crates.io API, 2026-10-23). Published by hand with `cargo publish`; the repo has no
@@ -105,7 +106,8 @@ License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`). Prerequisites: ni
 ```
 rsxtk/
   Cargo.toml  Cargo.lock        version line = the release arm (0.4.4)
-  src/main.rs                   the whole program (528 lines, 2026-10-23)
+  src/main.rs                   the whole program (534 lines, 2026-10-23)
+  tests/cli.rs                  end-to-end `cargo test` suite (41 tests; testing.md)
   README.md  rsxtk_logo.png     public doc
   LICENSE-MIT  LICENSE-APACHE
   CLAUDE.md                     gitignored pointer (untracked 2026-10-20; was committed empty before)

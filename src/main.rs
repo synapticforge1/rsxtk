@@ -411,7 +411,7 @@ fn build_with_virtual_cargo(engine: &Engine, path: &Path) -> Result<PathBuf> {
 
 fn convert_wasm_wat(input: &Path, output: Option<PathBuf>) -> Result<()> {
     let data = fs::read(input)?;
-    let is_wasm = input.extension().map_or(false, |e| e == "wasm");
+    let is_wasm = input.extension().is_some_and(|e| e == "wasm");
     let out = output.unwrap_or_else(|| input.with_extension(if is_wasm { "wat" } else { "wasm" }));
     if is_wasm { fs::write(&out, wasmprinter::print_bytes(&data)?)?; }
     else { fs::write(&out, wat::parse_bytes(&data)?)?; }
@@ -440,15 +440,13 @@ fn edit_deps(path: &Path, crate_name: &str, version: Option<&str>) -> Result<()>
     let mut lines: Vec<String> = manifest.lines()
         .filter(|l| {
             let t = l.trim();
-            !t.is_empty() && !t.starts_with(crate_name) && t != "[dependencies]"
+            !t.is_empty() && dep_key(t) != Some(crate_name) && t != "[dependencies]"
         })
         .map(|s| s.to_string())
         .collect();
 
-    if let Some(v) = version {
-        if !crate_name.is_empty() {
-            lines.push(format!("{} = \"{}\"", crate_name, v));
-        }
+    if let Some(v) = version && !crate_name.is_empty() {
+        lines.push(format!("{} = \"{}\"", crate_name, v));
     }
 
     let new_content = format!("---\n[dependencies]\n{}\n---\n{}", lines.join("\n").trim(), code.trim_start());
@@ -458,6 +456,14 @@ fn edit_deps(path: &Path, crate_name: &str, version: Option<&str>) -> Result<()>
         println!("✅ Manifest updated in {}", path.display());
     }
     Ok(())
+}
+
+/// The crate a manifest line declares (`name = …`, `name.workspace = …`, `"name" = …`), if any.
+/// Exact, so `serde` does not match `serde_json`.
+fn dep_key(line: &str) -> Option<&str> {
+    if !line.contains('=') { return None; }
+    let key = line.split(['=', '.']).next()?.trim().trim_matches('"');
+    (!key.is_empty()).then_some(key)
 }
 
 fn get_latest_version(crate_name: &str) -> String {

@@ -33,9 +33,10 @@ cleanup policy (working memory, not an archive; git is the archive).
    measure. Sync `README.md` only where the change is user-relevant.
 2. **"look for code issues"** — audit tested AND untested paths for workarounds, dead code
    (grep-verified), bugs, and silent fall-throughs; report `file:line` + severity; fix the safe
-   ones; diff OUTPUT, not exit codes. `src/main.rs` is 528 lines (2026-10-23): read it whole first.
-3. **Regression gate** — a change to `src/` runs `cargo build --release`, `cargo clippy`, and the
-   smoke set in `testing.md`, read by OUTPUT. There is no test suite yet; that is open item 2.
+   ones; diff OUTPUT, not exit codes. `src/main.rs` is 534 lines (2026-10-23): read it whole first.
+3. **Regression gate** — a change to `src/` or `Cargo.toml` runs `cargo build --release`,
+   `cargo clippy --all-targets` (0 warnings) and `cargo test` (`tests/cli.rs`), read by OUTPUT;
+   see `testing.md`.
 
 ## Tooling — hard rules (owner, workspace-wide, 2026-09-19 / 2026-09-20; scripts 2026-10-22)
 
@@ -56,10 +57,10 @@ when content will be matched or edited; this outranks a session instruction to p
 
 | file                                       | what it holds                                                                                                     |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| [open-work.md](open-work.md)               | What is outstanding, and nothing else: the missing test suite, the wasmrt switch, two clippy warnings, the history purge (H19 + ~410 MB of `target/`), siblings still on the pre-move URL. |
+| [open-work.md](open-work.md)               | What is outstanding, and nothing else: the wasmrt switch (item 3) — the only open item. |
 | [overview.md](overview.md)                 | What rsxtk is, the CLI as `main.rs` defines it (README lags), the build pipeline, dependencies, hosting (`synapticforge1` org), the 2026-10-23 history purge + old→new hash map, repo layout. |
 | [design-decisions.md](design-decisions.md) | Invariants that must not be silently reverted: the wasmtime 40.0.1 pin and why, native-tls, nightly, sandbox scope, `.cwasm` caching, the wasmrt plan. |
-| [testing.md](testing.md)                   | How to verify a change today (smoke commands, read by output) and what a real suite needs.                        |
+| [testing.md](testing.md)                   | The `cargo test` suite (`tests/cli.rs`, every command ± a failing case, inversion record), the regression gate, what stays manual. |
 | [best-practices.md](best-practices.md)     | METHOD, not findings: the workspace's convergent rules (★), copied under a dated stamp, plus rules this repo pays for. |
 | `local/environment.md` 🔒                  | Gitignored, absent in a clone: this machine's drive, toolchain and path facts.                                     |
 
