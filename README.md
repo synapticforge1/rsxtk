@@ -29,17 +29,18 @@ rustup target add wasm32-wasip1
 
 ---
 
-## New Features in v0.4.2
+## Features
 
--   **⚡ Wasmtime Disk Cache**: The engine now loads the default wasmtime cache config on startup, so repeated runs of the same `.wasm` file skip Cranelift recompilation entirely — matching the behaviour of the `wasmtime` CLI.
--   **📦 Resource Management (`rsc/`)**: A dedicated folder for local assets (HTML, CSV, JSON, etc.) that is automatically mirrored into the build environment.
--   **🔨 build.rs Support**: Automatically detects and utilizes a `build.rs` file located next to your script for complex build instructions.
--   **🔍 Auto-Dependency Versioning**: Adding a dependency via CLI without specifying a version now automatically fetches the latest stable release from Crates.io.
--   **🚀 WASI Preview 1 (v40) Support**: Fully compatible with the latest `wasmtime-wasi` error handling and exit status types.
+-   **⚡ Compiled-Script Cache**: A `.rs` script is compiled once to a native `.cwasm` artifact for your CPU and reused until the script changes, so repeated runs skip both `cargo` and Cranelift.
+-   **📦 Resource Folder (`rsc/`)**: Keep local assets (HTML, CSV, JSON, etc.) in an `rsc/` folder next to your script; the script reads them at run time through the sandbox.
+-   **🔍 Auto-Dependency Versioning**: Adding a dependency without a version fetches the latest release from crates.io (falls back to `*` if crates.io cannot be reached).
+-   **🚀 WASI Preview 1**: Runs on `wasmtime` 40 with `wasmtime-wasi` preview-1, including WASI exit-status handling.
 - **Smart Entry**: Attempts to run via `_start` (WASI). If missing, automatically lists callable functions.
 - **Library Mode**: Use `mod` to call specific functions with arguments from the CLI.
 - **Rich Metadata**: `info` command provides detailed function signatures (params and return types).
 - **Format Support**: Direct support for `.rs`, `.wasm`, `.wat`, and `.cwasm`.
+- **WAT ⇄ WASM**: `convert` translates between text and binary; `optimize` rewrites a module through Walrus.
+- **Benchmarking**: `bench` runs a module or script N times and reports the average.
 - **Zero-Config WASI**: Scripts are automatically sandboxed to their own parent directory.
 
 ---
@@ -58,17 +59,20 @@ rsxtk add my_script.rs reqwest
 ```
 
 ### 3. Remove Dependencies
-Add a crate (it will automatically find the latest version for you):
+Remove a crate from the script's manifest:
 ```bash
 rsxtk remove my_script.rs reqwest
 ```
 
 ### 4. Manage Resources
-Create a resource directory and place assets (like `index.html`) inside:
+Create an `rsc/` folder in the current directory (or pass a directory: `rsxtk resource <dir>`):
 ```bash
-rsxtk resource my_script.rs
+rsxtk resource
 ```
-Place your local dependency files in the newly created `rsc/` folder. You can reference them in your script like this:
+Place your local files in the new `rsc/` folder, next to your script. The script's folder is the sandbox root, so read them with a relative path:
+```rust
+let text = std::fs::read_to_string("rsc/greeting.txt").expect("read rsc/greeting.txt");
+```
 
 ### 5. Run (WASM Sandbox)
 Compiles to WASM and runs in a secure, sandboxed environment.
@@ -76,7 +80,7 @@ Compiles to WASM and runs in a secure, sandboxed environment.
 rsxtk run my_script.rs
 ```
 
-### 6. Csrun (Native Native)
+### 6. Csrun (Native)
 Runs natively on the host using the Cargo script interface.
 ```bash
 rsxtk csrun my_script.rs
@@ -88,16 +92,22 @@ rsxtk csrun my_script.rs
 
 | Command | Usage | Description |
 | :--- | :--- | :--- |
-| `init` | `rsxtk init <name>` | Creates a new script with a manifest header. |
-| `run` | `rsxtk run <file>` | Runs file in the WASM/WASI sandbox. |
+| `run` | `rsxtk run <file>` | Runs a `.rs`, `.wasm`, `.wat` or `.cwasm` file in the WASI sandbox; without `_start`, lists callable functions. |
+| `mod` | `rsxtk mod <file> [function] [args]...` | Calls an exported function with CLI arguments (`i32`/`i64`/`f32`/`f64`); with no function, shows the module info. |
 | `csrun` | `rsxtk csrun <file>` | Runs file natively via `cargo -Z script`. |
-| `resource` | `rsxtk resource <file>` | Creates an `rsc/` folder for local assets. |
-| `add` | `rsxtk add <file> <crate>` | Adds a dependency to the script manifest. |
+| `build` | `rsxtk build <file> <target>` | Builds a script to `wasi` or `wasm` (writes `<file>.wasm`), or `wat` (also writes `<file>.wat`). |
+| `convert` | `rsxtk convert <input> [-o <output>]` | Converts `.wasm` ⇄ `.wat`. |
+| `init` | `rsxtk init <name>` | Creates a new script with a manifest header. |
+| `initmod` | `rsxtk initmod <name>` | Creates a new library-module template (exports `add`); call it with `rsxtk mod <name>.rs add 2 3`. A script without `fn main` is built as a library. |
+| `resource` | `rsxtk resource [dir]` | Creates an `rsc/` folder for local assets (default: current directory). |
+| `bench` | `rsxtk bench <file> [-i <n>]` | Runs the file `n` times (default 5) and prints the average time. |
+| `add` | `rsxtk add <file> <crate> [version]` | Adds a dependency to the script manifest (latest version if omitted). |
 | `remove` | `rsxtk remove <file> <crate>` | Removes a dependency from the script manifest. |
 | `list` | `rsxtk list <file>` | Lists current dependencies in the script. |
 | `fmt` | `rsxtk fmt <file>` | Formats the Rust code inside the script (preserving manifest). |
-| `build` | `rsxtk build <file> <target>` | Compiles to `wasi`, `wasm`, or `cwasm`. |
+| `optimize` | `rsxtk optimize -i <input> [-o <output>]` | Rewrites a `.wasm` through Walrus (overwrites the input if `-o` is omitted). |
 | `clean` | `rsxtk clean` | Wipes the `.tk` build cache. |
+| `info` | `rsxtk info <file>` | Shows exported functions with their signatures, and whether the module uses WASI. |
 
 ---
 
@@ -106,14 +116,11 @@ rsxtk csrun my_script.rs
 ### The Build Pipeline
 When you run a script, `rsxtk` performs the following steps:
 1.  **Parsing**: Separates the TOML manifest from the Rust source code using triple-dash boundaries.
-2.  **Mirroring**: 
-    -   Copies the script into a temporary `Cargo` project inside `.tk/`.
-    -   Copies the `rsc/` folder (if present) into the project root.
-    -   Copies `build.rs` (if present) into the project root.
-3.  **'run' option**    
-    - **Compilation**: Invokes `cargo` to target `wasm32-wasip1`.
-    - **Optimization**: Pre-compiles the result into a `.cwasm` artifact and caches it. On subsequent runs the compiled module is loaded from the wasmtime disk cache, skipping Cranelift entirely.
-    - **Sandboxing**: Runs the artifact in a secure WASI sandbox with the project root pre-opened for file access.
+2.  **Mirroring**: Writes the manifest and the code into a hidden `Cargo` project at `.tk/<script>/` in the current directory — as a binary when the script has `fn main`, otherwise as a library (`cdylib`).
+3.  **'run' option**
+    - **Compilation**: Invokes `cargo` to target `wasm32-wasip1` (release).
+    - **Optimization**: Passes the result through Walrus, pre-compiles it into a `.cwasm` artifact for your CPU, and caches it. Later runs reuse the `.cwasm` until the script changes or the machine changes, skipping `cargo` and Cranelift entirely.
+    - **Sandboxing**: Runs the artifact in a WASI sandbox with the script's own folder pre-opened as `.` for file access.
 4.  **'csrun' option**: runs the cargo -Z script from the nightly version of rust
 
 ---

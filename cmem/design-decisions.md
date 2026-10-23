@@ -5,26 +5,37 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
 
 ## Engine and dependencies
 
-- 🔒 **`wasmtime = 40.0.1`, `default-features = false`.** Versions 42.x+ reintroduce `aws-lc-sys`
+- 🔒 **`wasmtime = "40.0.1"`, `default-features = false`.** Versions 42.x+ reintroduce `aws-lc-sys`
   in the dependency chain, which needs NASM and cmake to build; this machine has neither, and the
   build fails with `Missing dependency: cmake`. Do not upgrade until NASM + cmake are available or
-  a pure-Rust crypto path exists in that version. A caret would not protect this: the constraint is
-  correctness of the build, so it lives in the specifier.
+  a pure-Rust crypto path exists in that version. The specifier is a caret (`>=40.0.1, <41`), which
+  is enough: it admits 40.x patches (`Cargo.lock` holds 40.0.4, 2026-10-23) and never 41/42. It is
+  not an exact pin; do not "fix" it to `=40.0.1`.
 - 🔒 **`reqwest` on `native-tls`** (Windows SChannel) for the same reason — no cmake/NASM.
 - 🔒 **`wat` / `wasmprinter` / `walrus` are toolkit scope**, not engine scope; they stay when the
   engine is swapped (wasmrt `cmem/loaders.md`).
-- ⚠️ `component-model` is enabled on wasmtime and nothing uses it (wasmrt `cmem/loaders.md`).
-  Recorded, not removed: removing it is a size measurement first.
+- `component-model` dropped from rsxtk's own wasmtime features (2026-10-23): rsxtk never used it,
+  and the measurement showed it costs nothing to declare or drop — `wasmtime-wasi` (`p2`, implied
+  by `p1`) and `wasmtime-wasi-io` turn it on regardless. `cargo tree -e features -i wasmtime`
+  lists the same 8 features with and without the line, so the build is identical. It goes away
+  only with the wasmtime → wasmrt switch.
 
 ## Execution model
 
 - **Nightly toolchain is a prerequisite**: `csrun` uses `cargo -Z script`.
 - **Zero-config WASI sandbox**: the script's parent directory is the only preopen. Widening it is
   a security decision, not a convenience.
-- **`.cwasm` pre-compilation + wasmtime disk cache** make repeated runs skip Cranelift; the cache
-  key includes a machine id (OS, arch, hostname). ⚠️ Under an interpreter engine (wasmrt) `.cwasm`
+- **`.cwasm` pre-compilation** makes repeated runs of a `.rs` script skip `cargo` and Cranelift;
+  the cache key includes a machine id (OS, arch, hostname). No wasmtime disk cache is configured
+  (corrected 2026-10-23). ⚠️ Under an interpreter engine (wasmrt) `.cwasm`
   would not be the default — re-decide when the engine changes.
 - **Smart entry**: `_start` if exported, else list callable exports; `mod` calls one by name.
+- **Bin or lib by `fn main`** (2026-10-23): a `.rs` script whose code has `fn main` (then optional
+  whitespace, then `(`) is mirrored as a binary (`src/main.rs`); otherwise as a library
+  (`src/lib.rs`, `crate-type = ["cdylib"]`), so `initmod` templates build and `mod` can call them.
+  The other kind's source file is deleted on each build (Cargo would build both). A library's
+  output is named with `-` → `_`; `build_and_cache_script` returns the real `.wasm` path so callers
+  never rebuild the name. Before this, every script was a binary and `initmod` failed with E0601.
 - **The manifest is the `---`-fenced TOML header**; `fmt` must preserve it (a formatter that eats
   the header eats the dependencies).
 

@@ -17,6 +17,18 @@ cargo clippy --all-targets
 ./target/release/rsxtk clean
 ```
 
+Also worth running (2026-10-23): `rsxtk mod <lib>.wat add 2 3` → `5`; the same with an argument
+missing → `Missing argument for parameter 1`, exit 1; `rsxtk run nope.wasm` → exit 1;
+`rsxtk initmod my-lib` then `rsxtk mod my-lib.rs add 4 5` → `9` (library mirror, hyphen name);
+`rsxtk mod my-lib.rs nosuch 1` → `Func 'nosuch' not found`, exit 1; `rsxtk run <dir>/lib.wat`
+from ANOTHER folder → the export listing, exit 0.
+
+**Run the smoke set with a RELEASE binary.** The debug build overflows its stack on `run`
+(`thread 'main' has overflowed its stack`, exit `0xC00000FD`, 2026-10-23) before the script
+starts, so the negative control dies the same way as the positive one, and neither proves
+anything. Build with `CARGO_TARGET_DIR` on NTFS and SHORT (a deep path breaks MinGW `dlltool` in
+`windows-sys`: "Can't open def file").
+
 Rules inherited from the workspace: diff the output against the previous run, not the exit code;
 rebuild the unmodified commit before blaming a toolchain failure; a hang is a measurement — read
 CPU time first; never pipe when the exit code is the measurement.

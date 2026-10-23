@@ -12,8 +12,8 @@ and runs it in a WASI preview-1 sandbox pre-opened on the script's parent direct
 
 ## The CLI as `src/main.rs` defines it (0.4.4)
 
-`clap` derive, `rename_all = "lowercase"`. ⚠️ `README.md` documents only ten of these and still
-heads its feature list "New Features in v0.4.2".
+`clap` derive, `rename_all = "lowercase"`. Matches `rsxtk --help` (0.4.4 binary, 2026-10-23);
+`README.md` lists all sixteen since 2026-10-23.
 
 | command    | args                              | does                                                             |
 | ---------- | --------------------------------- | ---------------------------------------------------------------- |
@@ -23,8 +23,8 @@ heads its feature list "New Features in v0.4.2".
 | `build`    | `<path> <wasi|wasm|wat>`          | build through the virtual Cargo project; `wat` converts the result |
 | `convert`  | `<input> [-o output]`             | `.wasm` ⇄ `.wat` (via `wat` / `wasmprinter`)                      |
 | `init`     | `<name>`                          | new script template with manifest header                          |
-| `initmod`  | `<name>`                          | new library-module template                                       |
-| `resource` | `[path]`                          | create `rsc/` for local assets, mirrored into the build            |
+| `initmod`  | `<name>`                          | new library-module template (no `fn main` → built as a `cdylib`; `mod <name>.rs add 2 3` → `5`) |
+| `resource` | `[dir]`                           | create `<dir>/rsc/` (default `.`); a FILE path fails (os error 183). NOT mirrored into `.tk/` — a script reads `rsc/…` at run time via the preopen |
 | `bench`    | `<path> [-i N=5]`                 | time N executions                                                 |
 | `add`      | `<path> <crate> [version]`        | add a dependency; missing version fetched from crates.io (`reqwest`, `USER_AGENT`) |
 | `remove`   | `<path> <crate>`                  | remove a dependency                                               |
@@ -34,16 +34,18 @@ heads its feature list "New Features in v0.4.2".
 | `clean`    |                                   | wipe `.tk/`                                                       |
 | `info`     | `<path>`                          | export signatures (params / results), "wasmtk style"              |
 
-Engine config (`create_engine`): Cranelift `OptLevel::Speed`, SIMD, bulk memory, multi-memory on;
-the default wasmtime disk cache is loaded so repeated runs skip Cranelift. A machine id
-(OS + arch + hostname hash) keys cached artifacts.
+Engine config (`create_engine`): Cranelift `OptLevel::Speed`, SIMD, bulk memory, multi-memory on.
+⚠️ No wasmtime disk cache is configured (corrected 2026-10-23 — the README and this file used to
+claim one): only `.rs` scripts are cached, as `.tk/<stem>/<stem>.cwasm`, reused while the
+machine id (OS + arch + hostname hash) matches and the `.cwasm` is newer than the script.
+`.wasm` / `.wat` are recompiled by Cranelift on every run.
 
 ## Dependencies (`Cargo.toml`)
 
 | crate                        | version  | why / constraint                                                              |
 | ---------------------------- | -------- | ----------------------------------------------------------------------------- |
-| `wasmtime`                   | 40.0.1   | `default-features = false`, features `cranelift`, `runtime`, `component-model`; **42+ reintroduces `aws-lc-sys` (NASM + cmake)** |
-| `wasmtime-wasi`              | 40.0.1   | `p1` only                                                                     |
+| `wasmtime`                   | ^40.0.1 (lock 40.0.4) | `default-features = false`, features `cranelift`, `runtime`; **42+ reintroduces `aws-lc-sys` (NASM + cmake)**. `component-model` is still ON — `wasmtime-wasi` (`p2`, implied by `p1`) and `wasmtime-wasi-io` enable it |
+| `wasmtime-wasi`              | ^40.0.1 (lock 40.0.4) | `p1` requested; it implies `p2`                                |
 | `wat`, `wasmprinter`, `walrus` | 1.244 / 0.244 / 0.24.4 | text ⇄ binary and optimization; **toolkit scope, stay when the engine changes** |
 | `reqwest`                    | 0.13.1   | `blocking`, `json`, `http2`, **`native-tls`** (Windows SChannel — no cmake/NASM) |
 | `clap` 4.5, `anyhow`, `serde`, `serde_json` | — | CLI, errors, manifest                                          |
@@ -71,7 +73,7 @@ License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`). Prerequisites: ni
 ```
 rsxtk/
   Cargo.toml  Cargo.lock        version line = the release arm (0.4.4)
-  src/main.rs                   the whole program (464 lines, 2026-10-20; unchanged since 2026-04-20)
+  src/main.rs                   the whole program (480 lines, 2026-10-23)
   README.md  rsxtk_logo.png     public doc
   LICENSE-MIT  LICENSE-APACHE
   CLAUDE.md                     gitignored pointer (untracked 2026-10-20; was committed empty before)

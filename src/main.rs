@@ -130,7 +130,7 @@ fn main() -> Result<()> {
 fn run_wasm(engine: &Engine, path: &Path) -> Result<()> {
     let abs_path = fs::canonicalize(path)?;
     let module = load_module(engine, &abs_path)?;
-    execute_module(engine, module, abs_path.parent().unwrap(), abs_path.file_name().unwrap().to_str().unwrap())
+    execute_module(engine, module, &abs_path)
 }
 
 fn run_wasm_mod(engine: &Engine, path: &Path, args: Vec<String>) -> Result<()> {
@@ -179,13 +179,13 @@ fn run_wasm_mod(engine: &Engine, path: &Path, args: Vec<String>) -> Result<()> {
     Ok(())
 }
 
-fn execute_module(engine: &Engine, module: Module, host_dir: &Path, filename: &str) -> Result<()> {
+fn execute_module(engine: &Engine, module: Module, abs_path: &Path) -> Result<()> {
     let mut linker: Linker<MyState> = Linker::new(engine);
     p1::add_to_linker_sync(&mut linker, |state| &mut state.wasi)?;
-    
+
     let mut builder = WasiCtxBuilder::new();
     builder.inherit_stdio().inherit_args();
-    builder.preopened_dir(host_dir, ".", wasmtime_wasi::DirPerms::all(), wasmtime_wasi::FilePerms::all())?;
+    builder.preopened_dir(abs_path.parent().unwrap(), ".", wasmtime_wasi::DirPerms::all(), wasmtime_wasi::FilePerms::all())?;
     
     let mut store = Store::new(engine, MyState { wasi: builder.build_p1() });
     let instance = linker.instantiate(&mut store, &module)?;
@@ -200,7 +200,7 @@ fn execute_module(engine: &Engine, module: Module, host_dir: &Path, filename: &s
         }
     } else {
         println!("💡 Library module loaded.");
-        print_info(engine, Path::new(filename))?;
+        print_info(engine, abs_path)?;
     }
     Ok(())
 }
@@ -209,7 +209,7 @@ fn load_module(engine: &Engine, path: &Path) -> Result<Module> {
     let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
     match ext {
         "rs" => {
-            let artifact = build_and_cache_script(engine, path)?;
+            let (artifact, _) = build_and_cache_script(engine, path)?;
             unsafe { Ok(Module::deserialize_file(engine, artifact)?) }
         },
         "wat" => {
@@ -228,28 +228,17 @@ fn load_module(engine: &Engine, path: &Path) -> Result<Module> {
 
 // --- Build & Caching ---
 
-fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<PathBuf> {
+/// Builds a `.rs` script and returns `(cwasm, wasm)` paths. A script without `fn main` is a
+/// library module (`initmod`) and is mirrored as a `cdylib`; otherwise it is a binary.
+fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<(PathBuf, PathBuf)> {
     let stem = script_path.file_stem().unwrap().to_str().unwrap();
     let cache_root = std::env::current_dir()?.join(".tk").join(stem);
     let cwasm_path = cache_root.join(format!("{}.cwasm", stem));
     let id_path = cache_root.join("machine.id");
-    
-    let current_id = get_machine_id();
 
-    if cwasm_path.exists() && id_path.exists() {
-        let cached_id = fs::read_to_string(&id_path)?;
-        let src_mtime = fs::metadata(script_path)?.modified()?;
-        let cache_mtime = fs::metadata(&cwasm_path)?.modified()?;
-        
-        if cached_id == current_id && cache_mtime > src_mtime {
-            return Ok(cwasm_path);
-        }
-    }
-
-    fs::create_dir_all(cache_root.join("src"))?;
     let content = fs::read_to_string(script_path)?;
     let parts: Vec<&str> = content.splitn(3, "---").collect();
-    if parts.len() < 3 { 
+    if parts.len() < 3 {
         bail!(
             "❌ Missing script manifest in '{}'.\n\n\
             WASI scripts require a header block for dependencies.\n\
@@ -257,28 +246,57 @@ fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<PathBuf
             script_path.display(),
             script_path.file_name().unwrap().to_str().unwrap(),
             script_path.file_name().unwrap().to_str().unwrap()
-        ); 
+        );
+    }
+    let code = parts[2].trim_start();
+    let is_lib = !has_main_fn(code);
+    // Cargo names a library's output after the crate name, with '-' turned into '_'.
+    let artifact = if is_lib { stem.replace('-', "_") } else { stem.to_string() };
+    let wasm_output = cache_root.join("t/wasm32-wasip1/release").join(format!("{}.wasm", artifact));
+
+    let current_id = get_machine_id();
+
+    if cwasm_path.exists() && id_path.exists() && wasm_output.exists() {
+        let cached_id = fs::read_to_string(&id_path)?;
+        let src_mtime = fs::metadata(script_path)?.modified()?;
+        let cache_mtime = fs::metadata(&cwasm_path)?.modified()?;
+
+        if cached_id == current_id && cache_mtime > src_mtime {
+            return Ok((cwasm_path, wasm_output));
+        }
     }
 
-    fs::write(cache_root.join("Cargo.toml"), format!("[package]\nname=\"{}\"\nversion=\"0.1.0\"\nedition=\"2021\"\n\n{}", stem, parts[1].trim()))?;
-    fs::write(cache_root.join("src/main.rs"), format!("\n{}", parts[2].trim_start()))?;
+    fs::create_dir_all(cache_root.join("src"))?;
+    let (src_file, stale_file, lib_section) = if is_lib {
+        ("src/lib.rs", "src/main.rs", "[lib]\ncrate-type = [\"cdylib\"]\n\n")
+    } else {
+        ("src/main.rs", "src/lib.rs", "")
+    };
+    // A leftover file from the other kind would be built too, so remove it.
+    let _ = fs::remove_file(cache_root.join(stale_file));
+    fs::write(cache_root.join("Cargo.toml"), format!("[package]\nname=\"{}\"\nversion=\"0.1.0\"\nedition=\"2021\"\n\n{}{}", stem, lib_section, parts[1].trim()))?;
+    fs::write(cache_root.join(src_file), format!("\n{}", code))?;
 
     let status = std::process::Command::new("cargo")
-        .env("CARGO_TARGET_DIR", &cache_root.join("t"))
+        .env("CARGO_TARGET_DIR", cache_root.join("t"))
         .args(["build", "--manifest-path", cache_root.join("Cargo.toml").to_str().unwrap(), "--target", "wasm32-wasip1", "--release"])
         .status()?;
 
     if !status.success() { bail!("Build failed."); }
-    let wasm_output = cache_root.join("t/wasm32-wasip1/release").join(format!("{}.wasm", stem));
-    
+
     let mut module = walrus::Module::from_buffer(&fs::read(&wasm_output)?)?;
     let optimized_wasm = module.emit_wasm();
-    
+
     let cwasm_bytes = engine.precompile_module(&optimized_wasm)?;
     fs::write(&cwasm_path, cwasm_bytes)?;
     fs::write(&id_path, current_id)?;
-    
-    Ok(cwasm_path)
+
+    Ok((cwasm_path, wasm_output))
+}
+
+/// True when the code defines `fn main` (followed by optional whitespace and `(`).
+fn has_main_fn(code: &str) -> bool {
+    code.match_indices("fn main").any(|(i, m)| code[i + m.len()..].trim_start().starts_with('('))
 }
 
 // --- Utilities & Helpers ---
@@ -336,9 +354,7 @@ fn print_info(engine: &Engine, path: &Path) -> Result<()> {
 
 fn build_with_virtual_cargo(engine: &Engine, path: &Path) -> Result<PathBuf> {
     let abs_path = fs::canonicalize(path)?;
-    let _ = build_and_cache_script(engine, &abs_path)?;
-    let stem = abs_path.file_stem().unwrap().to_str().unwrap();
-    let wasm_path = std::env::current_dir()?.join(".tk").join(stem).join("t/wasm32-wasip1/release").join(format!("{}.wasm", stem));
+    let (_, wasm_path) = build_and_cache_script(engine, &abs_path)?;
     let local_wasm = abs_path.with_extension("wasm");
     fs::copy(wasm_path, &local_wasm)?;
     println!("🔨 Built: {}", local_wasm.display());
