@@ -69,7 +69,8 @@ License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`). Prerequisites: ni
   **0.5.0 published 2026-10-23** by the owner (`cargo login` + `cargo publish`; this machine had no
   token before). Built from commit `be056bd`; 779.1 KB; its SHA-256 equals the `--dry-run` package
   that was scanned (no drive paths; only the allowed `authors` email). The crates.io page now shows
-  the org repository URL and no homepage. No git tag for 0.5.0 (tags only on the owner's word). Published by hand with `cargo publish`; the repo has no
+  the org repository URL and no homepage. Tagged `rsxtk_v0.5.0` → `be056bd` (owner, 2026-10-23;
+  lightweight, like `rsxtk_v0.4.0`), pushed. Published by hand with `cargo publish`; the repo has no
   CI and no `.github/`, so no trusted-publishing (OIDC) policy is involved (workspace letter H20
   does not apply). The crates.io API exposes no author/email field — only the publisher's GitHub
   login.
@@ -82,7 +83,8 @@ License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`). Prerequisites: ni
   (2026-04-16), the only place absolute drive paths ever occurred (8 commits). `Cargo.toml`
   `authors` was left as it is (allowed maintainer contact).
 - **How:** a private bundle of the pre-purge state first (the workspace's machine-local
-  `cmem/local/backups/`, never committed); `git filter-branch` with an env filter (that one address
+  `cmem/local/backups/`, never committed; deleted on the owner's word the same day, after the
+  0.5.0 release — the pre-purge history no longer exists on this machine); `git filter-branch` with an env filter (that one address
   only) and an index filter (`git rm -r --cached target`), `--tag-name-filter cat`, empty commits
   kept so the map is 1:1; force-push with a lease per ref; `refs/original` dropped, reflogs
   expired, `gc --prune=now`.
