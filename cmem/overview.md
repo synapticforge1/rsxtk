@@ -58,8 +58,13 @@ License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`). Prerequisites: ni
   GitHub organization (owner's). Moved there from the personal account `jrmarcum/rsxtk`; the GitHub
   API reports the new `full_name` and the old URL redirects. Use the org URL everywhere new.
 - `Cargo.toml` `repository` / `homepage` / `documentation` name the org URL (fixed 2026-10-20; the
-  crates.io page keeps the old URL until the next publish). `authors` is a person, not the host,
-  so it stays.
+  crates.io page keeps the old URL until the next publish). `authors` carries the maintainer
+  contact email — the one allowed email (owner, 2026-10-23; `INDEX.md` § Policy).
+- **Publishing**: crates.io crate `rsxtk`, 34 versions 0.1.0 → 0.4.4 (2026-01-06 → 2026-04-20), 9
+  not yanked (crates.io API, 2026-10-23). Published by hand with `cargo publish`; the repo has no
+  CI and no `.github/`, so no trusted-publishing (OIDC) policy is involved (workspace letter H20
+  does not apply). The crates.io API exposes no author/email field — only the publisher's GitHub
+  login.
 
 ## Repo layout
 
