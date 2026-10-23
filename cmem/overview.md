@@ -68,6 +68,38 @@ License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`). Prerequisites: ni
   does not apply). The crates.io API exposes no author/email field — only the publisher's GitHub
   login.
 
+## History — purged 2026-10-23 (workspace letter H19; owner: "it is ok to change the files")
+
+- **What was removed, from every commit of `main`, `0.4.0` and tag `rsxtk_v0.4.0`:** the owner's
+  personal address as author/committer (53 fields over 36 commits → the GitHub noreply address,
+  also the local `user.email`), and `target/` — build output committed before `/target` was ignored
+  (2026-04-16), the only place absolute drive paths ever occurred (8 commits). `Cargo.toml`
+  `authors` was left as it is (allowed maintainer contact).
+- **How:** a private bundle of the pre-purge state first (the workspace's machine-local
+  `cmem/local/backups/`, never committed); `git filter-branch` with an env filter (that one address
+  only) and an index filter (`git rm -r --cached target`), `--tag-name-filter cat`, empty commits
+  kept so the map is 1:1; force-push with a lease per ref; `refs/original` dropped, reflogs
+  expired, `gc --prune=now`.
+- **Verified** against the old refs as positive control: 36 → 36 commits; personal-address fields
+  53 → 0; commits with `target/` or drive paths 8 → 0; messages 0 hits before and after; names,
+  dates and messages identical on all 36; trees of `main` and `0.4.0` byte-identical; the TAG's
+  tree changed (owner-approved exception to H19's byte-identical rule): 2587 files → the same 8
+  without `target/`. `.git`: 416.55 MiB → 2.93 MiB, one pack, `fsck` clean.
+- **Not in our control:** `refs/pull/1/head` on GitHub (read-only) still points at the old
+  `3f0c695`, so the old history stays reachable there, and GitHub serves old commits by hash until
+  its own GC — a full purge is a GitHub Support request (owner). crates.io 0.4.x
+  `.cargo_vcs_info.json` keep the old hashes forever.
+- **Map (old → new)**, oldest first: `6415fbe`→`55f0535`, `cac9cdf`→`875ce7d`, `ddb3178`→`bd53e30`,
+  `a966f1a`→`52d0955`, `adaa0f1`→`1b49927`, `3fa1918`→`07dc287`, `74cee0f`→`4a875ca`,
+  `fcf91b8`→`aae92c8`, `2980b6b`→`62acd0a`, `fa2978f`→`eb32878`, `6a0ea17`→`552540c`,
+  `33997a4`→`2c7f2a0`, `47268c6`→`3bb450f`, `ebb769f`→`dfa181c`, `56c71ea`→`8263a86` (tag
+  `rsxtk_v0.4.0`), `a6cfe10`→`21f517d`, `3f0c695`→`704dcb0` (branch `0.4.0`), `a2d98fd`→`4c28557`,
+  `9c565a9`→`c4d6f89`, `591525f`→`f530975`, `35c06a3`→`aa94741`, `1f55c0a`→`77fe05b`,
+  `d32b900`→`fdd532e`, `df34276`→`710cd59`, `b120149`→`878c53f`, `d95976a`→`fefb330`,
+  `5fb29db`→`e587396`, `8a74017`→`82e2c51`, `87ad0e0`→`de62a6d`, `1211acf`→`d0866d9`,
+  `02d4827`→`7b2a5bc`, `8e916a3`→`c3a3751`, `6c5a31d`→`e7c5fc8`, `80769c2`→`e7e29de`,
+  `f96efed`→`aa0029c`, `e6cbf6c`→`91f30b7` (`main`).
+
 ## Repo layout
 
 ```
@@ -77,6 +109,7 @@ rsxtk/
   README.md  rsxtk_logo.png     public doc
   LICENSE-MIT  LICENSE-APACHE
   CLAUDE.md                     gitignored pointer (untracked 2026-10-20; was committed empty before)
+  .claude/settings.local.json   gitignored (machine-local tool permissions)
   cmem/                         this memory (first committed 2026-10-20); cmem/local/ gitignored
   target/                       build output (gitignored)
 ```
