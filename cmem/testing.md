@@ -23,6 +23,12 @@ missing → `Missing argument for parameter 1`, exit 1; `rsxtk run nope.wasm` �
 `rsxtk mod my-lib.rs nosuch 1` → `Func 'nosuch' not found`, exit 1; `rsxtk run <dir>/lib.wat`
 from ANOTHER folder → the export listing, exit 0.
 
+Mirroring checks (2026-10-23, each in its own folder): a script with
+`include_str!("rsc/embed.txt")` prints the file; edit the file → the next run prints the new text
+(cache rebuilt); remove `rsc/` → build fails and `.tk/<stem>/src/rsc` is gone. A `build.rs` that
+emits `cargo:rustc-env=X=…` and a script printing `env!("X")` → the value; edit `build.rs` → the new
+value; remove `build.rs` → compile error and `.tk/<stem>/build.rs` is gone.
+
 **Run the smoke set with a RELEASE binary.** The debug build overflows its stack on `run`
 (`thread 'main' has overflowed its stack`, exit `0xC00000FD`, 2026-10-23) before the script
 starts, so the negative control dies the same way as the positive one, and neither proves

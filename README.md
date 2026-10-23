@@ -32,7 +32,8 @@ rustup target add wasm32-wasip1
 ## Features
 
 -   **⚡ Compiled-Script Cache**: A `.rs` script is compiled once to a native `.cwasm` artifact for your CPU and reused until the script changes, so repeated runs skip both `cargo` and Cranelift.
--   **📦 Resource Folder (`rsc/`)**: Keep local assets (HTML, CSV, JSON, etc.) in an `rsc/` folder next to your script; the script reads them at run time through the sandbox.
+-   **📦 Resource Folder (`rsc/`)**: Keep local assets (HTML, CSV, JSON, etc.) in an `rsc/` folder next to your script. Read them at run time through the sandbox, or embed them at compile time with `include_str!("rsc/…")` / `include_bytes!`.
+-   **🔨 build.rs Support**: A `build.rs` next to your script is used as the script's Cargo build script (code generation, `cargo:rustc-env`, and so on).
 -   **🔍 Auto-Dependency Versioning**: Adding a dependency without a version fetches the latest release from crates.io (falls back to `*` if crates.io cannot be reached).
 -   **🚀 WASI Preview 1**: Runs on `wasmtime` 40 with `wasmtime-wasi` preview-1, including WASI exit-status handling.
 - **Smart Entry**: Attempts to run via `_start` (WASI). If missing, automatically lists callable functions.
@@ -69,9 +70,13 @@ Create an `rsc/` folder in the current directory (or pass a directory: `rsxtk re
 ```bash
 rsxtk resource
 ```
-Place your local files in the new `rsc/` folder, next to your script. The script's folder is the sandbox root, so read them with a relative path:
+Place your local files in the new `rsc/` folder, next to your script. The script's folder is the sandbox root, so read them at run time with a relative path:
 ```rust
 let text = std::fs::read_to_string("rsc/greeting.txt").expect("read rsc/greeting.txt");
+```
+Or embed a file into the module at compile time (rebuilt when the file changes):
+```rust
+const TEXT: &str = include_str!("rsc/greeting.txt");
 ```
 
 ### 5. Run (WASM Sandbox)
@@ -117,6 +122,9 @@ rsxtk csrun my_script.rs
 When you run a script, `rsxtk` performs the following steps:
 1.  **Parsing**: Separates the TOML manifest from the Rust source code using triple-dash boundaries.
 2.  **Mirroring**: Writes the manifest and the code into a hidden `Cargo` project at `.tk/<script>/` in the current directory — as a binary when the script has `fn main`, otherwise as a library (`cdylib`).
+    -   Copies `build.rs` (if present next to the script) into the project root.
+    -   Copies the `rsc/` folder (if present) into the project's `src/`, so `include_str!("rsc/…")` resolves as it does next to the script.
+    -   A change to the script, `build.rs` or anything in `rsc/` triggers a rebuild.
 3.  **'run' option**
     - **Compilation**: Invokes `cargo` to target `wasm32-wasip1` (release).
     - **Optimization**: Passes the result through Walrus, pre-compiles it into a `.cwasm` artifact for your CPU, and caches it. Later runs reuse the `.cwasm` until the script changes or the machine changes, skipping `cargo` and Cranelift entirely.
@@ -180,13 +188,16 @@ On Windows, if your project is deep within a folder structure, you may encounter
 * **Alternative**: Enable **Long Paths** in Windows via PowerShell (Admin):
   `New-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force`
 
-### 2. Cargo Build Failures
+### 2. build.rs Runs Outside the Sandbox
+A `build.rs` is a normal program that Cargo compiles and runs on your machine during the build, like any Cargo build script — only the finished script runs in the WASI sandbox. Every script in the same folder shares that folder's `build.rs` and `rsc/`; keep scripts that need different ones in different folders.
+
+### 3. Cargo Build Failures
 * Ensure the WASM target is installed: `rustup target add wasm32-wasip1`.
 * **Clean Cache**: If builds become corrupted, run `rsxtk clean`.
 
-### 3. Wasmtime Execution Errors
+### 4. Wasmtime Execution Errors
 * **Unsupported ELF Header**: Occurs if a `.wat` file wasn't converted or a `.cwasm` is incompatible. Run `rsxtk clean` and try again.
 
-### 4. Wasmtime Version Compatibility
+### 5. Wasmtime Version Compatibility
 
 `rsxtk` is pinned to **wasmtime 40.x**. Versions 42.x and later reintroduce `aws-lc-sys` into the dependency chain, which requires **NASM** and **cmake** to build. On Windows environments without those tools the build will fail with `Missing dependency: cmake`. Do not upgrade wasmtime until NASM and cmake are available, or until an alternative pure-Rust crypto path is available in that version.

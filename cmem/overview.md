@@ -24,7 +24,7 @@ and runs it in a WASI preview-1 sandbox pre-opened on the script's parent direct
 | `convert`  | `<input> [-o output]`             | `.wasm` ⇄ `.wat` (via `wat` / `wasmprinter`)                      |
 | `init`     | `<name>`                          | new script template with manifest header                          |
 | `initmod`  | `<name>`                          | new library-module template (no `fn main` → built as a `cdylib`; `mod <name>.rs add 2 3` → `5`) |
-| `resource` | `[dir]`                           | create `<dir>/rsc/` (default `.`); a FILE path fails (os error 183). NOT mirrored into `.tk/` — a script reads `rsc/…` at run time via the preopen |
+| `resource` | `[dir]`                           | create `<dir>/rsc/` (default `.`); a FILE path fails (os error 183). Read at run time via the preopen; mirrored to `.tk/<stem>/src/rsc/` for `include_str!` (2026-10-23) |
 | `bench`    | `<path> [-i N=5]`                 | time N executions                                                 |
 | `add`      | `<path> <crate> [version]`        | add a dependency; missing version fetched from crates.io (`reqwest`, `USER_AGENT`) |
 | `remove`   | `<path> <crate>`                  | remove a dependency                                               |
@@ -73,7 +73,7 @@ License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`). Prerequisites: ni
 ```
 rsxtk/
   Cargo.toml  Cargo.lock        version line = the release arm (0.4.4)
-  src/main.rs                   the whole program (480 lines, 2026-10-23)
+  src/main.rs                   the whole program (528 lines, 2026-10-23)
   README.md  rsxtk_logo.png     public doc
   LICENSE-MIT  LICENSE-APACHE
   CLAUDE.md                     gitignored pointer (untracked 2026-10-20; was committed empty before)

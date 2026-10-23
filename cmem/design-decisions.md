@@ -30,6 +30,15 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
   (corrected 2026-10-23). ⚠️ Under an interpreter engine (wasmrt) `.cwasm`
   would not be the default — re-decide when the engine changes.
 - **Smart entry**: `_start` if exported, else list callable exports; `mod` calls one by name.
+- 🔒 **`build.rs` and `rsc/` are mirrored** (owner chose option A, 2026-10-23; the README had
+  promised it since 0.4.2, but no version ever did it). From the SCRIPT's folder: `build.rs` →
+  `.tk/<stem>/build.rs` (Cargo runs it from the package root); `rsc/` → `.tk/<stem>/src/rsc/`, so
+  `include_str!("rsc/…")` resolves as beside the script and under `csrun`. Stale copies are
+  removed. The cache check takes the newest mtime of script + `build.rs` + all of `rsc/` (its
+  folders count, so a deleted file registers), and rebuilds if either appeared or vanished. A
+  script named `build.rs` is not its own build script. All scripts in one folder share that
+  folder's `build.rs` and `rsc/`. `build.rs` runs on the HOST, unsandboxed, like any Cargo build
+  script; the README says so. Run-time reads of `rsc/` never needed this: the preopen covers them.
 - **Bin or lib by `fn main`** (2026-10-23): a `.rs` script whose code has `fn main` (then optional
   whitespace, then `(`) is mirrored as a binary (`src/main.rs`); otherwise as a library
   (`src/lib.rs`, `crate-type = ["cdylib"]`), so `initmod` templates build and `mod` can call them.

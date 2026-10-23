@@ -230,6 +230,7 @@ fn load_module(engine: &Engine, path: &Path) -> Result<Module> {
 
 /// Builds a `.rs` script and returns `(cwasm, wasm)` paths. A script without `fn main` is a
 /// library module (`initmod`) and is mirrored as a `cdylib`; otherwise it is a binary.
+/// A `build.rs` and an `rsc/` folder beside the script are mirrored with it.
 fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<(PathBuf, PathBuf)> {
     let stem = script_path.file_stem().unwrap().to_str().unwrap();
     let cache_root = std::env::current_dir()?.join(".tk").join(stem);
@@ -254,14 +255,25 @@ fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<(PathBu
     let artifact = if is_lib { stem.replace('-', "_") } else { stem.to_string() };
     let wasm_output = cache_root.join("t/wasm32-wasip1/release").join(format!("{}.wasm", artifact));
 
+    let script_dir = script_path.parent().unwrap_or(Path::new("."));
+    let build_rs = script_dir.join("build.rs");
+    // A script that is itself named build.rs is not also its own build script.
+    let has_build_rs = build_rs.is_file() && !script_path.file_name().is_some_and(|n| n == "build.rs");
+    let rsc_dir = script_dir.join("rsc");
+    let mirror_build_rs = cache_root.join("build.rs");
+    let mirror_rsc = cache_root.join("src/rsc");
+
     let current_id = get_machine_id();
 
     if cwasm_path.exists() && id_path.exists() && wasm_output.exists() {
         let cached_id = fs::read_to_string(&id_path)?;
-        let src_mtime = fs::metadata(script_path)?.modified()?;
+        let src_mtime = newest_mtime(&[script_path, &build_rs, &rsc_dir])?;
         let cache_mtime = fs::metadata(&cwasm_path)?.modified()?;
 
-        if cached_id == current_id && cache_mtime > src_mtime {
+        // A build.rs or rsc/ that appeared or vanished since the last build also forces a rebuild.
+        let mirror_matches = has_build_rs == mirror_build_rs.exists() && rsc_dir.is_dir() == mirror_rsc.exists();
+
+        if cached_id == current_id && cache_mtime > src_mtime && mirror_matches {
             return Ok((cwasm_path, wasm_output));
         }
     }
@@ -276,6 +288,13 @@ fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<(PathBu
     let _ = fs::remove_file(cache_root.join(stale_file));
     fs::write(cache_root.join("Cargo.toml"), format!("[package]\nname=\"{}\"\nversion=\"0.1.0\"\nedition=\"2021\"\n\n{}{}", stem, lib_section, parts[1].trim()))?;
     fs::write(cache_root.join(src_file), format!("\n{}", code))?;
+
+    // Cargo runs build.rs from the package root. rsc/ goes under src/, so include_str!("rsc/…")
+    // resolves as it does beside the script (and under `csrun`). Stale copies are removed.
+    if has_build_rs { fs::copy(&build_rs, &mirror_build_rs)?; }
+    else { let _ = fs::remove_file(&mirror_build_rs); }
+    if rsc_dir.is_dir() { copy_dir_fresh(&rsc_dir, &mirror_rsc)?; }
+    else if mirror_rsc.exists() { fs::remove_dir_all(&mirror_rsc)?; }
 
     let status = std::process::Command::new("cargo")
         .env("CARGO_TARGET_DIR", cache_root.join("t"))
@@ -297,6 +316,35 @@ fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<(PathBu
 /// True when the code defines `fn main` (followed by optional whitespace and `(`).
 fn has_main_fn(code: &str) -> bool {
     code.match_indices("fn main").any(|(i, m)| code[i + m.len()..].trim_start().starts_with('('))
+}
+
+/// Latest modification time among `paths`; directories are walked, and count themselves, so a
+/// file removed from one still registers. Missing paths are skipped.
+fn newest_mtime(paths: &[&Path]) -> Result<std::time::SystemTime> {
+    let mut newest = std::time::SystemTime::UNIX_EPOCH;
+    for path in paths {
+        if !path.exists() { continue; }
+        newest = newest.max(fs::metadata(path)?.modified()?);
+        if path.is_dir() {
+            for entry in fs::read_dir(path)? {
+                newest = newest.max(newest_mtime(&[&entry?.path()])?);
+            }
+        }
+    }
+    Ok(newest)
+}
+
+/// Copies `src` into `dst` recursively, replacing whatever `dst` held.
+fn copy_dir_fresh(src: &Path, dst: &Path) -> Result<()> {
+    if dst.exists() { fs::remove_dir_all(dst)?; }
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let target = dst.join(entry.file_name());
+        if entry.file_type()?.is_dir() { copy_dir_fresh(&entry.path(), &target)?; }
+        else { fs::copy(entry.path(), target)?; }
+    }
+    Ok(())
 }
 
 // --- Utilities & Helpers ---
