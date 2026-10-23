@@ -60,15 +60,16 @@ License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`). Prerequisites: ni
 - Canonical home: **`https://github.com/synapticforge1/rsxtk`**, owned by the `synapticforge1`
   GitHub organization (owner's). Moved there from the personal account `jrmarcum/rsxtk`; the GitHub
   API reports the new `full_name` and the old URL redirects. Use the org URL everywhere new.
-- `Cargo.toml` `repository` / `documentation` name the org URL (fixed 2026-10-20; the crates.io
-  page keeps the old URL until the next publish). `homepage` was removed 2026-10-23 (Cargo's
+- `Cargo.toml` `repository` / `documentation` name the org URL (fixed 2026-10-20; on crates.io
+  since the 0.5.0 publish). `homepage` was removed 2026-10-23 (Cargo's
   `redundant_homepage` lint: it repeated `repository`). `authors` carries the maintainer
   contact email — the one allowed email (owner, 2026-10-23; `INDEX.md` § Policy).
-- **Publishing**: crates.io crate `rsxtk`, 34 versions 0.1.0 → 0.4.4 (2026-01-06 → 2026-04-20), 10
-  not yanked: 0.3.3 and 0.3.6 → 0.4.4 (crates.io API, re-counted 2026-10-23; "9" was a miscount).
-  **0.5.0** bumped and committed 2026-10-23; NOT yet on crates.io — this machine has no crates.io
-  token (no `~/.cargo/credentials.toml`, no `CARGO_REGISTRY_TOKEN`); the owner runs `cargo login`,
-  then `cargo publish` from the clean, pushed tree. Its page will then show the org repository URL. Published by hand with `cargo publish`; the repo has no
+- **Publishing**: crates.io crate `rsxtk`, 35 versions 0.1.0 → 0.5.0 (2026-01-06 → 2026-10-23), 11
+  not yanked: 0.3.3, 0.3.6 → 0.4.4, and 0.5.0 (crates.io API, 2026-10-23).
+  **0.5.0 published 2026-10-23** by the owner (`cargo login` + `cargo publish`; this machine had no
+  token before). Built from commit `be056bd`; 779.1 KB; its SHA-256 equals the `--dry-run` package
+  that was scanned (no drive paths; only the allowed `authors` email). The crates.io page now shows
+  the org repository URL and no homepage. No git tag for 0.5.0 (tags only on the owner's word). Published by hand with `cargo publish`; the repo has no
   CI and no `.github/`, so no trusted-publishing (OIDC) policy is involved (workspace letter H20
   does not apply). The crates.io API exposes no author/email field — only the publisher's GitHub
   login.

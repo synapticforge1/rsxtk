@@ -65,7 +65,7 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
 ## Versioning and release (workspace rule, owner 2026-09-20)
 
 - Semantic Versioning 2.0.0: patch for fixes, minor for backward-compatible additions, major for
-  breaks; no cap, no carry. rsxtk is at `0.5.0` (2026-10-23), so consumers' carets treat every minor as
+  breaks; no cap, no carry. rsxtk is at `0.5.0` (published 2026-10-23), so consumers' carets treat every minor as
   potentially breaking until `1.0.0`, where its API promise begins. Keep a README Breaking Changes
   table as the migration guide (none exists yet).
 - **A bump is gated** (workspace rule, `../../cmem/layout-and-packaging.md` § "The compatibility
