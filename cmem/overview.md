@@ -135,3 +135,12 @@ rsxtk/
   slot first, for execution speed during development; the loaders follow. The rlib rsxtk would
   link has never been measured (wasmrt T11).
 - Workspace rules, contracts and the cross-repo map: `../../cmem/INDEX.md`.
+- **Workspace letters, rsxtk's side** (`../../cmem/handoffs.md`; re-read 2026-10-26): H6 ★ block
+  re-copied verbatim 2026-10-26 (`best-practices.md`; SemVer gate moot while rsxtk has no `pub`
+  API); H15 nothing to port; H16 `maintenance.strategy gc` set; H17 no stale links; H19 purged
+  (§ History; the 2026-10-26 address withdrawal changes nothing here); H20 not applicable
+  (§ Hosting); H21 rsxtk's own text quotes no sibling's rewritten id — the verbatim ★ 6.1 does
+  (`b8fafaa3f`, binaryang's pre-purge id; public `8d9ba0cb9`, same subject, measured 2026-10-26),
+  reported to the workspace, which owns the canonical text; H22 / H25 §3(d) the path test recorded
+  in `INDEX.md` § Policy 2026-10-26; H24 not addressed to rsxtk (its old ★ copy had no 5.2
+  incident) and satisfied by the re-copy.

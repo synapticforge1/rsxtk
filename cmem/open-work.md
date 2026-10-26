@@ -13,3 +13,10 @@ Publishing).
   interleaved, `.cwasm` off), then swap `wasmtime` + `wasmtime-wasi` for `wasmrt-core`; keep `wat`
   / `wasmprinter` / `walrus`. Owner decision that rsxtk goes first with wasmtk (2026-09-20). The
   referee is `cargo test` (engine-agnostic assertions); it must pass unchanged after the swap.
+- **9. Line endings are not pinned (★ 7.6)** — found 2026-10-26. No `.gitattributes`; measured
+  with `git ls-files --eol`: `src/main.rs`, `Cargo.toml`, `README.md`, `LICENSE-APACHE`,
+  `LICENSE-MIT` are CRLF in the index, every other text file LF; local `core.autocrlf=input`. Fix:
+  `.gitattributes` wildcard-first (`* text=auto eol=lf`, `*.png binary`), `git add --renormalize .`
+  in its own commit, positive control (`git ls-files --eol` all `i/lf`), then the full gate —
+  renormalizing touches `src/main.rs` and `Cargo.toml`, and the published crate's bytes change at
+  the next release. Waits on the owner's go-ahead (a whole-file diff of the source).

@@ -16,14 +16,22 @@ cleanup policy (working memory, not an archive; git is the archive).
 - **A number in prose is a claim with a date.** Re-derive before quoting.
 - 🔒 **No secrets or personal information in anything public** (owner, 2026-10-22; workspace
   `../../cmem/working-rules.md` § Records): no tokens or keys, no email addresses, machine names or
-  **absolute drive paths of the owner's machines** in a committed file, commit message, issue or
-  the published crate. Use repo-relative paths or placeholders (`<repo-root>`, `<scratchpad>`);
-  real paths and machine facts go in the gitignored `cmem/local/`. Commits carry the GitHub noreply
-  address (local `user.email`). **One exception** (owner, 2026-10-23): the maintainer contact
-  email in `Cargo.toml` `authors`, which crates.io reads — rsxtk publishes there. It is not
-  repeated anywhere else. **Before committing, scan the diff**:
+  **machine-specific paths** in a committed file, commit message, issue or the published crate.
+  **The path test is "is it machine-specific?", not "is it absolute?"** (owner, 2026-10-23;
+  workspace letter H22). *Not public*: any path that records the owner's machine layout — a user
+  profile (`C:\Users\<name>\…`), the project tree (`D:\Programs\…`), other drives (`J:\…`), scoop /
+  AppData installs, scratchpad or session ids. *Fine*: repo- or sibling-relative paths, env vars,
+  placeholders (`<repo-root>`, `<scratchpad>`), and a CONVENTION path that names nothing about one
+  machine and works on any comparable host (e.g. `C:\zig-cache\<repo>` as a cache dir). Real paths
+  and machine facts go in the gitignored `cmem/local/`; tool settings (`.claude/`) are never
+  tracked. **The one email exception** (owner, 2026-10-23; widened 2026-10-26): the maintainer
+  contact email, in `Cargo.toml` `authors` (crates.io reads it — rsxtk publishes there) and as the
+  git commit author/committer address; nowhere else. rsxtk's commits carry the GitHub noreply
+  address (local `user.email`, since the 2026-10-23 purge) and keep it — the widening permits the
+  address, it does not ask for a change. **Before committing, scan the diff**:
   `git grep -I -n -i -E '[A-Za-z]:[\\/]+(Programs|Users|scoop|tools)[\\/]|/[a-z]/(Programs|Users)/'`
-  plus an email pattern; the only allowed hit is `Cargo.toml` `authors`.
+  plus an email pattern; the only allowed hit is `Cargo.toml` `authors`. A hit is a CANDIDATE,
+  judged by the path test — a convention path is not scrubbed.
 - **Never run a formatter on `cmem/`.**
 
 ## Triggers (binding on every agent)
@@ -57,11 +65,11 @@ when content will be matched or edited; this outranks a session instruction to p
 
 | file                                       | what it holds                                                                                                     |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| [open-work.md](open-work.md)               | What is outstanding, and nothing else: the wasmrt switch (item 3) — the only open item. |
+| [open-work.md](open-work.md)               | What is outstanding, and nothing else: the wasmrt switch (item 3); line endings unpinned (item 9). |
 | [overview.md](overview.md)                 | What rsxtk is, the CLI as `main.rs` defines it (README lags), the build pipeline, dependencies, hosting (`synapticforge1` org), the 2026-10-23 history purge + old→new hash map, repo layout. |
 | [design-decisions.md](design-decisions.md) | Invariants that must not be silently reverted: the wasmtime 40.0.1 pin and why, native-tls, nightly, sandbox scope, `.cwasm` caching, the wasmrt plan. |
 | [testing.md](testing.md)                   | The `cargo test` suite (`tests/cli.rs`, every command ± a failing case, inversion record), the regression gate, what stays manual. |
-| [best-practices.md](best-practices.md)     | METHOD, not findings: the workspace's convergent rules (★), copied under a dated stamp, plus rules this repo pays for. |
+| [best-practices.md](best-practices.md)     | METHOD, not findings: the workspace's convergent rules (★), copied verbatim under a dated stamp (re-copied 2026-10-26), plus rules this repo pays for. |
 | `local/environment.md` 🔒                  | Gitignored, absent in a clone: this machine's drive, toolchain and path facts.                                     |
 
 ## Related files outside cmem
