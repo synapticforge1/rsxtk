@@ -131,3 +131,8 @@ the incident that paid for it, and the origin tag. Rules rsxtk pays for itself a
   even with "do not edit in place" above it.** The 2026-09-20 ★ copy shortened every rule; by
   2026-10-26, 12 of 28 bold sentences differed from the canonical file and nothing had fired.
   Copy verbatim, and check by script. [rsxtk, found 2026-10-26]
+- **R.4 "Same binary" needs a same-source control before it means anything.** A whole-file hash
+  of the release exe was the planned proof that renormalizing CRLF → LF changed no code; it
+  differed — and so did two builds of the SAME source (MinGW stamps the PE `TimeDateStamp` and
+  `CheckSum`). Build one source twice, find the bytes that vary, mask exactly those, then compare
+  (`testing.md` § Comparing binaries). [rsxtk, found 2026-10-26]
