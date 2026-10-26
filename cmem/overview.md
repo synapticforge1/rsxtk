@@ -63,7 +63,8 @@ License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`). Prerequisites: ni
 - `Cargo.toml` `repository` / `documentation` name the org URL (fixed 2026-10-20; on crates.io
   since the 0.5.0 publish). `homepage` was removed 2026-10-23 (Cargo's
   `redundant_homepage` lint: it repeated `repository`). `authors` carries the maintainer
-  contact email — the one allowed email (owner, 2026-10-23; `INDEX.md` § Policy).
+  contact email — the one allowed email, which since 2026-10-26 may also be the commit
+  author/committer address (owner; rsxtk keeps noreply; `INDEX.md` § Policy).
 - **Publishing**: crates.io crate `rsxtk`, 35 versions 0.1.0 → 0.5.0 (2026-01-06 → 2026-10-23), 11
   not yanked: 0.3.3, 0.3.6 → 0.4.4, and 0.5.0 (crates.io API, 2026-10-23).
   **0.5.0 published 2026-10-23** by the owner (`cargo login` + `cargo publish`; this machine had no
