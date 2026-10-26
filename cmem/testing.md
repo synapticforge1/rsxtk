@@ -45,6 +45,23 @@ overflowed its stack") came only from the OLD April debug binary left in the D:-
 (it fails on every fresh build, 2/2); a debug build of today's code passes fresh and cached
 builds. Do not use the stale binaries in `target/`.
 
+## Comparing binaries (measured 2026-10-26)
+
+**A whole-file hash of `rsxtk.exe` is not evidence**: two release builds of the SAME source differ
+(MinGW's linker stamps the PE header). Measured: they differ in exactly two fields, the COFF
+`TimeDateStamp` (offset `0x88`) and the optional header `CheckSum` (`0xd8`); everything else of
+13,806,080 bytes is identical. So "same binary" means: byte-diff with those two fields masked, and
+show the control (two builds of one source) first. Used for item 9: the CRLF tree (`aef343e`) and
+the LF tree (`bae61ee`), built from the same path and target dir, differ only in those two fields
+— no code change, as expected (rustc normalizes CRLF to LF before lexing; `main.rs:244` is the one
+multi-line literal, a `\` continuation).
+
+## Line endings
+
+`.gitattributes` (2026-10-26): `* text=auto eol=lf`, `*.png binary`. Check with
+`git ls-files --eol` — every text file `i/lf w/lf`. A CRLF file in the working tree after a
+renormalize is refreshed by deleting it and `git checkout -- <file>`.
+
 ## Manual checks still worth a look
 
 The suite does not cover: `add` WITHOUT a version (fetches the latest from crates.io; falls back

@@ -118,6 +118,7 @@ rsxtk/
   tests/cli.rs                  end-to-end `cargo test` suite (41 tests; testing.md)
   README.md  rsxtk_logo.png     public doc
   LICENSE-MIT  LICENSE-APACHE
+  .gitattributes                LF everywhere, `*.png` binary (2026-10-26; testing.md § Line endings)
   CLAUDE.md                     gitignored pointer (untracked 2026-10-20; was committed empty before)
   .claude/settings.local.json   gitignored (machine-local tool permissions)
   cmem/                         this memory (first committed 2026-10-20); cmem/local/ gitignored

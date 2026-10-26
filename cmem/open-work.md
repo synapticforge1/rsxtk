@@ -7,16 +7,10 @@ verified read-only: wasmtk `vision.md:83`, `polyglot-producers.md:74`, `roadmap.
 `loaders.md:28` all name `synapticforge1/rsxtk`; the two remaining mentions record the move; 2 —
 the test suite, `testing.md`; 4 — clippy and the manifest lint at 0 warnings; 7 — `add`/`remove`
 prefix match fixed, `design-decisions.md`; 8 — 0.5.0 published to crates.io, `overview.md` §
-Publishing).
+Publishing; closed 2026-10-26: 9 — line endings pinned to LF by `.gitattributes` and the five CRLF
+files renormalized, `bae61ee`, release binary proved identical, `testing.md` § Comparing binaries).
 
 - **3. The wasmrt switch**: measure first (rlib size; end-to-end time wasmtime vs wasmrt,
   interleaved, `.cwasm` off), then swap `wasmtime` + `wasmtime-wasi` for `wasmrt-core`; keep `wat`
   / `wasmprinter` / `walrus`. Owner decision that rsxtk goes first with wasmtk (2026-09-20). The
   referee is `cargo test` (engine-agnostic assertions); it must pass unchanged after the swap.
-- **9. Line endings are not pinned (★ 7.6)** — found 2026-10-26. No `.gitattributes`; measured
-  with `git ls-files --eol`: `src/main.rs`, `Cargo.toml`, `README.md`, `LICENSE-APACHE`,
-  `LICENSE-MIT` are CRLF in the index, every other text file LF; local `core.autocrlf=input`. Fix:
-  `.gitattributes` wildcard-first (`* text=auto eol=lf`, `*.png binary`), `git add --renormalize .`
-  in its own commit, positive control (`git ls-files --eol` all `i/lf`), then the full gate —
-  renormalizing touches `src/main.rs` and `Cargo.toml`, and the published crate's bytes change at
-  the next release. Waits on the owner's go-ahead (a whole-file diff of the source).
