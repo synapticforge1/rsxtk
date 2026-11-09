@@ -112,7 +112,12 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
   universalWasmLoader-rs (rsxtk's tags are `rsxtk_vX.Y.Z`, not `vX.Y.Z`).
   **No backfill** (owner: "only new tags will get release pages"): `rsxtk_v0.4.0` keeps its one
   manual page (by `jrmarcum`, read through the REST API 2026-11-09); `rsxtk_v0.5.0` stays without
-  one. First run: 0.5.1 (item 10).
+  one.
 - **0.5.1 is a patch** (2026-11-09): `src/` and `tests/` are unchanged since 0.5.0 apart from the
   CRLF → LF renormalization (`git diff --ignore-cr-at-eol rsxtk_v0.5.0 -- src tests` empty); the
-  manifest gained the two `exclude` entries. It is the first release published by CI.
+  manifest gained the two `exclude` entries. **Released 2026-11-09, the first release by CI**
+  (owner: "commit, publish then release"): tag `rsxtk_v0.5.1` → `5732d04` (lightweight; = `main`),
+  run 42720045933 — `checks`, `publish`, `release` all success, every step success (read through
+  the public Actions API). crates.io serves `rsxtk` 0.5.1 (created 2026-11-09T23:30:37Z, not
+  yanked). GitHub Release `rsxtk_v0.5.1`, name "rsxtk 0.5.1", by `github-actions[bot]`, not a
+  draft, crates.io link on top; the tag still `5732d04` after the run (`git ls-remote`).

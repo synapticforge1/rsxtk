@@ -72,7 +72,7 @@ License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`). Prerequisites: ni
   that was scanned (no drive paths; only the allowed `authors` email). The crates.io page now shows
   the org repository URL and no homepage. Tagged `rsxtk_v0.5.0` → `be056bd` (owner, 2026-10-23;
   lightweight, like `rsxtk_v0.4.0`), pushed. 0.5.0 and earlier were published by hand with
-  `cargo publish`. **From 0.5.1 (2026-11-09) CI publishes** on a pushed `rsxtk_v*` tag, with the
+  `cargo publish`. **From 0.5.1 (2026-11-09; 36 versions now, 12 not yanked) CI publishes** on a pushed `rsxtk_v*` tag, with the
   repo secret `CARGO_REGISTRY_TOKEN` (an API token; no trusted-publishing (OIDC) policy, so
   workspace letter H20 still does not apply) — `design-decisions.md` § Versioning and release. The crates.io API exposes no author/email field — only the publisher's GitHub
   login.

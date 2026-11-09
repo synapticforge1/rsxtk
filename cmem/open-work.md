@@ -8,13 +8,11 @@ verified read-only: wasmtk `vision.md:83`, `polyglot-producers.md:74`, `roadmap.
 the test suite, `testing.md`; 4 — clippy and the manifest lint at 0 warnings; 7 — `add`/`remove`
 prefix match fixed, `design-decisions.md`; 8 — 0.5.0 published to crates.io, `overview.md` §
 Publishing; closed 2026-10-26: 9 — line endings pinned to LF by `.gitattributes` and the five CRLF
-files renormalized, `bae61ee`, release binary proved identical, `testing.md` § Comparing binaries).
+files renormalized, `bae61ee`, release binary proved identical, `testing.md` § Comparing binaries;
+closed 2026-11-09: 10 — the release workflow's first real run, 0.5.1, all three jobs green,
+`design-decisions.md` § Versioning and release).
 
 - **3. The wasmrt switch**: measure first (rlib size; end-to-end time wasmtime vs wasmrt,
   interleaved, `.cwasm` off), then swap `wasmtime` + `wasmtime-wasi` for `wasmrt-core`; keep `wat`
   / `wasmprinter` / `walrus`. Owner decision that rsxtk goes first with wasmtk (2026-09-20). The
   referee is `cargo test` (engine-agnostic assertions); it must pass unchanged after the swap.
-- **10. The release workflow's first real run** (added 2026-11-09, letter H32): 0.5.1's tag. To
-  read back: the run's three jobs green, crates.io serving `rsxtk` 0.5.1, the Release page's
-  `author.login` = `github-actions[bot]`, the tag unmoved. Write that into the workspace ledger's
-  H32 row.
