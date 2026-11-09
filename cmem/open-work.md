@@ -14,7 +14,7 @@ files renormalized, `bae61ee`, release binary proved identical, `testing.md` § 
   interleaved, `.cwasm` off), then swap `wasmtime` + `wasmtime-wasi` for `wasmrt-core`; keep `wat`
   / `wasmprinter` / `walrus`. Owner decision that rsxtk goes first with wasmtk (2026-09-20). The
   referee is `cargo test` (engine-agnostic assertions); it must pass unchanged after the swap.
-- **10. The Release-page workflow's first real run** (added 2026-11-09, letter H32): tested only
-  against a mock API. Measured on GitHub by the next `rsxtk_v*` tag: the run's two jobs green, the
-  page's `author.login` = `github-actions[bot]`, the tag unmoved. Write that into the workspace
-  ledger's H32 row. Nothing to do before the owner decides on a release.
+- **10. The release workflow's first real run** (added 2026-11-09, letter H32): 0.5.1's tag. To
+  read back: the run's three jobs green, crates.io serving `rsxtk` 0.5.1, the Release page's
+  `author.login` = `github-actions[bot]`, the tag unmoved. Write that into the workspace ledger's
+  H32 row.

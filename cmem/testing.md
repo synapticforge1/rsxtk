@@ -33,9 +33,13 @@ CARGO_TARGET_DIR=<short NTFS dir> cargo test           # 41 pass, 0 ignored (202
 
 ```
 cargo build --release
-cargo clippy --all-targets      # 0 warnings since 2026-10-23 — keep it at 0
+cargo clippy --all-targets -- -D warnings   # 0 warnings since 2026-10-23 — keep it at 0
 cargo test
 ```
+
+**CI repeats it on every tag** (`release.yml` `checks`, `--locked`, on `nightly-2026-11-04`, the
+same nightly as the local run) before anything is published. Run 2026-11-09 for 0.5.1 locally
+(Windows, nightly 2026-11-04): release build OK, clippy 0 warnings with `-D warnings`, 41 pass.
 
 Use `CARGO_TARGET_DIR` on NTFS and SHORT: a deep path breaks MinGW `dlltool` in `windows-sys`
 ("Can't open def file"); `%TEMP%\rsxtk-t` works (`local/environment.md`).

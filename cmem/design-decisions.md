@@ -65,7 +65,7 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
 ## Versioning and release (workspace rule, owner 2026-09-20)
 
 - Semantic Versioning 2.0.0: patch for fixes, minor for backward-compatible additions, major for
-  breaks; no cap, no carry. rsxtk is at `0.5.0` (published 2026-10-23), so consumers' carets treat every minor as
+  breaks; no cap, no carry. rsxtk is at `0.5.1` (released by CI 2026-11-09), so consumers' carets treat every minor as
   potentially breaking until `1.0.0`, where its API promise begins. Keep a README Breaking Changes
   table as the migration guide (none exists yet).
 - **A bump is gated** (workspace rule, `../../cmem/layout-and-packaging.md` § "The compatibility
@@ -82,21 +82,37 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
   scripts built as `cdylib`) and fixes; `--help` lists the same 16 commands as 0.4.4 (compared
   binary to binary), so nothing was removed. A `build.rs` that 0.4.4 ignored now RUNS — a reason
   not to call it a patch.
-- **The crate excludes `cmem/`** (`exclude` in `Cargo.toml`, 2026-10-23): memory is for working on
-  rsxtk, not for crate users; it stays public on GitHub. `cargo package --list` for 0.5.0:
-  `.cargo_vcs_info.json`, `.gitignore`, `Cargo.lock`, `Cargo.toml`(`.orig`), both licenses,
-  `README.md`, `rsxtk_logo.png`, `src/main.rs`, `tests/cli.rs`.
-- Nothing is published unless the owner says so; `cargo publish` from a clean tree, tag after.
-- 🔒 **Every NEW tag gets its GitHub Release page from CI, never by hand, never by `gh`** (owner,
-  2026-11-09, workspace letter H32; `gh` banned in CI too, H30). `.github/workflows/release.yml`
-  (added 2026-11-09), on a pushed `rsxtk_v*` tag: `checks` (contents: read, no secret) — the tag
-  equals `rsxtk_v` + the `Cargo.toml` version, and `bun test scripts/` passes; then `release`
-  (contents: write, NO checkout) — waits until crates.io serves the version, fetches only
-  `scripts/github-release.ts` at `github.sha`, and runs it: the tag must exist and peel to
-  `github.sha` (a `POST /releases` would CREATE a missing tag), an existing page = done, else POST
-  `generate_release_notes` with the crates.io link on top, read back, peel again; 30 s per request.
-  Publishing stays BY HAND (no registry token in CI): the order is `cargo publish` → push the tag →
-  CI makes the page. A tag pushed before the publish fails the wait — publish, then re-run the job.
-  **No backfill** (owner: "only new tags will get release pages"): `rsxtk_v0.4.0` keeps its one manual
-  page (by `jrmarcum`, read through the REST API 2026-11-09); `rsxtk_v0.5.0` stays without one. Adapted from universalWasmLoader-rs's script
-  (rsxtk's tags are `rsxtk_vX.Y.Z`, not `vX.Y.Z`); unmeasured on GitHub until the next tag (item 10).
+- **The crate excludes `cmem/`, `.github/`, `scripts/`** (`exclude` in `Cargo.toml`; `cmem/`
+  2026-10-23, the other two 2026-11-09): they are for working on rsxtk, not for crate users; they
+  stay public on GitHub. `cargo package --list` for 0.5.0: `.cargo_vcs_info.json`, `.gitignore`,
+  `Cargo.lock`, `Cargo.toml`(`.orig`), both licenses, `README.md`, `rsxtk_logo.png`,
+  `src/main.rs`, `tests/cli.rs`.
+- Nothing is published unless the owner says so. **Since 2026-11-09 CI publishes** (owner: "the
+  cargo registry token has been added to the secrets for the project. please setup the CI and the
+  publish for crates.io"): the owner's go = bump the `Cargo.toml` version, run the gate, commit,
+  push `main`, push the tag `rsxtk_vX.Y.Z` (lightweight, like the older tags). No hand
+  `cargo publish` any more; the repo secret `CARGO_REGISTRY_TOKEN` is the only credential.
+- 🔒 **`.github/workflows/release.yml`, on a pushed `rsxtk_v*` tag — three jobs, each with only
+  what it needs** (workspace C30; H30 no `gh`, in CI too; H32 CI-made Release pages):
+  - `checks` (contents: read, no secret, clone without credentials): the tag equals `rsxtk_v` +
+    the `Cargo.toml` version; Rust `nightly-2026-11-04` (the local gate's nightly; rustfmt, clippy,
+    `wasm32-wasip1` — the suite needs all three) — `cargo build --release --locked`,
+    `cargo clippy --all-targets --locked -- -D warnings`, `cargo test --locked`; then
+    `bun test scripts/`. Everything that runs third-party build code runs here only.
+  - `publish` (contents: read): refuses unless the tag still peels to the commit `checks` passed;
+    asks crates.io for the version — 200 = skip (a re-run is safe), 404 = `cargo publish --locked
+    --no-verify` with `CARGO_REGISTRY_TOKEN` in that one step, anything else = stop.
+  - `release` (contents: write, NO checkout): runs once crates.io serves the version, even if
+    `publish` failed after its upload (C34); fetches only `scripts/github-release.ts` at
+    `github.sha` and runs it: the tag must exist and peel to `github.sha` (a `POST /releases`
+    would CREATE a missing tag), an existing page = done, else POST `generate_release_notes` with
+    the crates.io link on top, read back, peel again; 30 s per request.
+  Move `RUST_TOOLCHAIN` when the local gate's nightly moves (the CI gate must BE the local gate,
+  ★ 2.4); move `BUN_VERSION` + `BUN_SHA256` with the installed Bun (Tooling rule 10). Adapted from
+  universalWasmLoader-rs (rsxtk's tags are `rsxtk_vX.Y.Z`, not `vX.Y.Z`).
+  **No backfill** (owner: "only new tags will get release pages"): `rsxtk_v0.4.0` keeps its one
+  manual page (by `jrmarcum`, read through the REST API 2026-11-09); `rsxtk_v0.5.0` stays without
+  one. First run: 0.5.1 (item 10).
+- **0.5.1 is a patch** (2026-11-09): `src/` and `tests/` are unchanged since 0.5.0 apart from the
+  CRLF → LF renormalization (`git diff --ignore-cr-at-eol rsxtk_v0.5.0 -- src tests` empty); the
+  manifest gained the two `exclude` entries. It is the first release published by CI.

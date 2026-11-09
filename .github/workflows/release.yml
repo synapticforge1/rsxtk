@@ -1,20 +1,28 @@
-name: Release page
+name: Release
 
-# Makes the GitHub Release page for every NEW rsxtk_vX.Y.Z tag (workspace letter H32, owner
-# 2026-11-09; no backfill of older tags). rsxtk publishes to crates.io BY HAND, before tagging
-# (`cargo publish` from a clean tree, tag after — cmem/design-decisions.md), so this workflow
-# uploads nothing and holds no registry token. Two jobs, each with only what it needs (C30):
+# On a pushed rsxtk_vX.Y.Z tag: gate, publish to crates.io, make the GitHub Release page
+# (workspace letters H30, H32; owner 2026-11-09: "setup the CI and the publish for crates.io").
+# Three jobs, each with only what it needs (workspace C30):
 #
-#   checks  - contents: read, NO secret, a clone without credentials. The tag matches Cargo.toml,
-#             and the release-page script's own tests pass (mock GitHub API).
-#   release - contents: write, no build and NO checkout. Waits until crates.io serves the version
-#             (the hand publish comes first), fetches ONE file, `scripts/github-release.ts`, at
-#             `github.sha`, and runs it: GitHub's REST API with the job's token, never the GitHub
-#             CLI (H30), in H32's order (the tag peels to this commit / an existing page = done /
-#             POST, read back, peel again), 30 s per request.
+#   checks  - contents: read, NO secret, a clone without credentials. Everything that runs
+#             third-party code (dependencies' build.rs and proc macros) runs here and nowhere
+#             else: the tag equals the Cargo.toml version, then the regression gate
+#             (cmem/testing.md) — release build, clippy with warnings as errors, `cargo test` —
+#             and the release-page script's own tests.
+#   publish - contents: read, a fresh runner, a clone without credentials. Refuses unless the tag
+#             is still the commit `checks` passed. Skips the upload when crates.io already has the
+#             version (a re-run, or a hand publish), else `cargo publish --locked --no-verify` (no
+#             build: `checks` verified this commit) with CARGO_REGISTRY_TOKEN in that one step only.
+#   release - contents: write, no build and NO checkout. Runs once crates.io answers 200 for the
+#             version, even when `publish` failed AFTER its upload (workspace C34). Fetches ONE
+#             file, `scripts/github-release.ts`, at `github.sha`, and runs it: GitHub's REST API
+#             with the job's token, never the GitHub CLI, in H32's order (the tag peels to this
+#             commit / an existing page = done / POST, read back, peel again), 30 s per request.
 #
-# Every step is `run:`; there is no `uses:`. Bun is pinned by version AND sha256 (the release's
-# SHASUMS256.txt; move BUN_VERSION and BUN_SHA256 together — workspace Tooling rule 10).
+# Every step is `run:`; there is no `uses:`. Pinned: Rust through the runner's rustup (verifies
+# the signed channel manifest), the SAME dated nightly the gate runs on locally (rsxtk needs
+# nightly for `cargo -Z script`, and wasm32-wasip1 to build scripts); Bun by version AND sha256
+# (the release's SHASUMS256.txt; move BUN_VERSION and BUN_SHA256 together — Tooling rule 10).
 
 on:
   push:
@@ -24,6 +32,7 @@ on:
 permissions: {}
 
 env:
+  RUST_TOOLCHAIN: "nightly-2026-11-04"
   BUN_VERSION: "1.4.4"
   BUN_SHA256: bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c
   CRATE: rsxtk
@@ -53,6 +62,24 @@ jobs:
             exit 1
           fi
 
+      - name: Install Rust (pinned nightly, wasm32-wasip1, rustfmt, clippy)
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.cargo/bin:$PATH"
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal \
+            --component rustfmt --component clippy --target wasm32-wasip1
+          rustup default "$RUST_TOOLCHAIN"
+          cargo --version
+
+      - name: Build (release)
+        run: cargo build --release --locked
+
+      - name: Clippy (0 warnings)
+        run: cargo clippy --all-targets --locked -- -D warnings
+
+      - name: Test (gate)
+        run: cargo test --locked
+
       - name: Install Bun (pinned by sha256)
         run: |
           curl -fsSL --retry 6 --retry-delay 10 --retry-all-errors --connect-timeout 30 --max-time 300 \
@@ -63,17 +90,74 @@ jobs:
           echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
           "$HOME/.bun/bin/bun" --version
 
+      # The release-page script's own tests (mock GitHub API). A failure stops publish and release.
       - name: Test the release-page script
         run: bun test scripts/
 
-  release:
+  publish:
     needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: The tag is still the commit checks passed
+        run: |
+          tag="refs/tags/$GITHUB_REF_NAME"
+          refs=$(git ls-remote --tags "https://github.com/$GITHUB_REPOSITORY" "$tag" "$tag^{}")
+          at=$(printf '%s\n' "$refs" | awk -v t="$tag" '$2 == t "^{}" { p = $1 } $2 == t { l = $1 } END { print (p != "" ? p : l) }')
+          if [ "$at" != "$GITHUB_SHA" ]; then
+            echo "::error::$GITHUB_REF_NAME is now '$at', checks passed $GITHUB_SHA; refusing to publish"
+            exit 1
+          fi
+
+      - name: Checkout (no credentials)
+        run: |
+          git clone --depth=1 --branch "$GITHUB_REF_NAME" "https://github.com/$GITHUB_REPOSITORY" .
+          head=$(git rev-parse HEAD)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "::error::the tag moved: it is $head, this run is for $GITHUB_SHA"
+            exit 1
+          fi
+
+      - name: Install Rust (pinned nightly)
+        run: |
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.cargo/bin:$PATH"
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup default "$RUST_TOOLCHAIN"
+          cargo --version
+
+      - name: Is the version already on crates.io?
+        id: probe
+        run: |
+          v="${GITHUB_REF_NAME#rsxtk_v}"
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -A "$CRATES_UA" "https://crates.io/api/v1/crates/$CRATE/$v")
+          echo "crates.io answers $code for $CRATE $v"
+          case "$code" in
+            200) echo "skip=true" >> "$GITHUB_OUTPUT" ;;
+            404) echo "skip=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::crates.io answered $code; not publishing blind"; exit 1 ;;
+          esac
+
+      - name: Publish to crates.io
+        if: steps.probe.outputs.skip != 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          if [ -z "${CARGO_REGISTRY_TOKEN:-}" ]; then
+            echo "::error::CARGO_REGISTRY_TOKEN secret is not set. Add it under" \
+                 "repo Settings > Secrets and variables > Actions (from a crates.io API token)."
+            exit 1
+          fi
+          cargo publish --locked --no-verify
+
+  release:
+    needs: [checks, publish]
+    if: ${{ always() && needs.checks.result == 'success' && needs.publish.result != 'cancelled' && needs.publish.result != 'skipped' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      # The owner publishes before tagging, so this normally answers 200 at once; the wait covers
-      # crates.io's index lag. A tag pushed BEFORE the publish fails here: publish, then re-run.
       - name: Wait until crates.io serves the version
         run: |
           v="${GITHUB_REF_NAME#rsxtk_v}"
@@ -86,7 +170,7 @@ jobs:
             echo "attempt $i: crates.io answers $code"
             sleep 10
           done
-          echo "::error::crates.io does not serve $CRATE $v; no GitHub Release (publish, then re-run this job)"
+          echo "::error::crates.io does not serve $CRATE $v; no GitHub Release"
           exit 1
 
       # No checkout (workspace C30 / H32): no package code sits beside the write token. Only the
