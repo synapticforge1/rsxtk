@@ -62,6 +62,16 @@ multi-line literal, a `\` continuation).
 `git ls-files --eol` — every text file `i/lf w/lf`. A CRLF file in the working tree after a
 renormalize is refreshed by deleting it and `git checkout -- <file>`.
 
+## The release-page script: `bun test scripts/` (2026-11-09)
+
+`scripts/github-release.test.ts` runs `scripts/github-release.ts` as a child process against a
+mock GitHub REST API (`Bun.serve`): 12 tests — lightweight and annotated tags, missing tag, tag at
+another commit, existing page, POST rejected, draft read-back, tag moved by the POST, stalled API
+(time limit), dry-run, no token, a `vX.Y.Z` tag refused. 12 pass on Bun 1.4.4 (2026-11-09).
+**Inverted** the same day on scratch copies: removing the missing-tag refusal → 1 fail (that test);
+replacing the second peel with `sha` → 2 fail (the happy path's ordering check and "tag moved by
+the POST"). CI's `checks` job runs it on every tag; a change to `scripts/` runs it locally.
+
 ## Manual checks still worth a look
 
 The suite does not cover: `add` WITHOUT a version (fetches the latest from crates.io; falls back

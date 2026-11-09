@@ -1,0 +1,115 @@
+name: Release page
+
+# Makes the GitHub Release page for every NEW rsxtk_vX.Y.Z tag (workspace letter H32, owner
+# 2026-11-09; no backfill of older tags). rsxtk publishes to crates.io BY HAND, before tagging
+# (`cargo publish` from a clean tree, tag after — cmem/design-decisions.md), so this workflow
+# uploads nothing and holds no registry token. Two jobs, each with only what it needs (C30):
+#
+#   checks  - contents: read, NO secret, a clone without credentials. The tag matches Cargo.toml,
+#             and the release-page script's own tests pass (mock GitHub API).
+#   release - contents: write, no build and NO checkout. Waits until crates.io serves the version
+#             (the hand publish comes first), fetches ONE file, `scripts/github-release.ts`, at
+#             `github.sha`, and runs it: GitHub's REST API with the job's token, never the GitHub
+#             CLI (H30), in H32's order (the tag peels to this commit / an existing page = done /
+#             POST, read back, peel again), 30 s per request.
+#
+# Every step is `run:`; there is no `uses:`. Bun is pinned by version AND sha256 (the release's
+# SHASUMS256.txt; move BUN_VERSION and BUN_SHA256 together — workspace Tooling rule 10).
+
+on:
+  push:
+    tags:
+      - "rsxtk_v*"
+
+permissions: {}
+
+env:
+  BUN_VERSION: "1.4.4"
+  BUN_SHA256: bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c
+  CRATE: rsxtk
+  # crates.io's API asks every client for an identifying User-Agent.
+  CRATES_UA: "rsxtk release workflow (https://github.com/synapticforge1/rsxtk)"
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout (no credentials)
+        run: |
+          git clone --depth=1 --branch "$GITHUB_REF_NAME" "https://github.com/$GITHUB_REPOSITORY" .
+          head=$(git rev-parse HEAD)
+          if [ "$head" != "$GITHUB_SHA" ]; then
+            echo "::error::the tag moved: it is $head, this run is for $GITHUB_SHA"
+            exit 1
+          fi
+
+      - name: The tag matches Cargo.toml
+        run: |
+          v=$(sed -n 's/^version[[:space:]]*=[[:space:]]*"\([0-9.]*\)".*/\1/p' Cargo.toml | head -n 1)
+          if [ "rsxtk_v$v" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Cargo.toml says $v, the tag is $GITHUB_REF_NAME"
+            exit 1
+          fi
+
+      - name: Install Bun (pinned by sha256)
+        run: |
+          curl -fsSL --retry 6 --retry-delay 10 --retry-all-errors --connect-timeout 30 --max-time 300 \
+            -o "$RUNNER_TEMP/bun.zip" "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip"
+          echo "${BUN_SHA256}  $RUNNER_TEMP/bun.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/bun.zip" -d "$RUNNER_TEMP" && mkdir -p "$HOME/.bun/bin"
+          mv "$RUNNER_TEMP/bun-linux-x64/bun" "$HOME/.bun/bin/" && rm -rf "$RUNNER_TEMP/bun.zip" "$RUNNER_TEMP/bun-linux-x64"
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+          "$HOME/.bun/bin/bun" --version
+
+      - name: Test the release-page script
+        run: bun test scripts/
+
+  release:
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # The owner publishes before tagging, so this normally answers 200 at once; the wait covers
+      # crates.io's index lag. A tag pushed BEFORE the publish fails here: publish, then re-run.
+      - name: Wait until crates.io serves the version
+        run: |
+          v="${GITHUB_REF_NAME#rsxtk_v}"
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -A "$CRATES_UA" "https://crates.io/api/v1/crates/$CRATE/$v")
+            if [ "$code" = "200" ]; then
+              echo "crates.io serves $CRATE $v"
+              exit 0
+            fi
+            echo "attempt $i: crates.io answers $code"
+            sleep 10
+          done
+          echo "::error::crates.io does not serve $CRATE $v; no GitHub Release (publish, then re-run this job)"
+          exit 1
+
+      # No checkout (workspace C30 / H32): no package code sits beside the write token. Only the
+      # release-page script is fetched, at the exact commit `checks` tested.
+      - name: Fetch the release-page script at the tagged commit
+        run: |
+          curl -fsSL --retry 3 --retry-delay 5 --max-time 60 -o github-release.ts \
+            "https://raw.githubusercontent.com/$GITHUB_REPOSITORY/$GITHUB_SHA/scripts/github-release.ts"
+          head -n 3 github-release.ts
+
+      - name: Install Bun (pinned by sha256)
+        run: |
+          curl -fsSL --retry 6 --retry-delay 10 --retry-all-errors --connect-timeout 30 --max-time 300 \
+            -o bun.zip "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip"
+          echo "${BUN_SHA256}  bun.zip" | sha256sum -c -
+          unzip -q bun.zip && mkdir -p "$HOME/.bun/bin" && mv bun-linux-x64/bun "$HOME/.bun/bin/" && rm -rf bun.zip bun-linux-x64
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+          "$HOME/.bun/bin/bun" --version
+
+      # GitHub's REST API with the job's own token (H30: no GitHub CLI, in CI too), in H32's order.
+      # The script refuses unless the tag still peels to this run's commit: POST /releases would
+      # otherwise create a missing tag from the default branch.
+      - name: Create the GitHub Release page (REST API)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun github-release.ts

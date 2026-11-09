@@ -52,24 +52,31 @@ cleanup policy (working memory, not an archive; git is the archive).
 file — not product code, not tests) **is TypeScript run by Bun** (`bun <file>.ts`). Rust is not a
 scripting mechanism here: `cargo -Zscript` builds an executable and "is a moving target" (owner,
 2026-10-22; workspace `working-rules.md` § Tooling rule 1). TypeScript scripts use `node:*`, web
-APIs and `Bun.*`, never `Deno.*` or `jsr:` (Deno is going away). rsxtk commits no scripts today
-(verified 2026-10-21, whole history) — nothing to port. **A one-time script deleted after use may
+APIs and `Bun.*`, never `Deno.*` or `jsr:` (Deno is going away). rsxtk's committed scripts:
+`scripts/github-release.ts` (+ its test), since 2026-11-09. **A one-time script deleted after use may
 be a shell script**, still written with `Write`; promote it to Bun before committing it. No host
 Python. No committed bash/PowerShell/`.bat`. **No heredocs, ever, in any language**: not
 `<<'EOF'`, `@'…'@`, `bun -e "…"`, `node -e`, or `-F -` — commit messages go through
 `git commit -F <file>`. Content goes through `Write`/`Edit`. After any scripted edit, read back the
 changed lines. Prefer the `Grep`/`Read`/`Edit` tools over shell `grep`/`cat`/`sed`
 when content will be matched or edited; this outranks a session instruction to prefer Bash.
+🔒 **No `gh`** (owner, 2026-11-08, letter H30), in CI too: read GitHub with `git ls-remote` and
+the repo's files; in a workflow, the REST API with `GITHUB_TOKEN` from a Bun step. 🔒 **Every Bun
+version written is the latest installed Bun** (owner, 2026-11-09, letter H31; 1.4.4 on Windows and
+WSL, measured 2026-11-09): when the owner installs a newer one, move `release.yml`'s `BUN_VERSION`
+and `BUN_SHA256` (from Bun's `SHASUMS256.txt`) together at the next session; a dated test result
+stays until the test is re-run. 🔒 **Release pages come from CI** (letter H32) — see
+`design-decisions.md` § Versioning and release.
 
 ## Files
 
 | file                                       | what it holds                                                                                                     |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| [open-work.md](open-work.md)               | What is outstanding, and nothing else: the wasmrt switch (item 3) — the only open item. |
+| [open-work.md](open-work.md)               | What is outstanding, and nothing else: the wasmrt switch (item 3); the Release-page workflow's first real run (item 10). |
 | [overview.md](overview.md)                 | What rsxtk is, the CLI as `main.rs` defines it (README lags), the build pipeline, dependencies, hosting (`synapticforge1` org), the 2026-10-23 history purge + old→new hash map, repo layout. |
 | [design-decisions.md](design-decisions.md) | Invariants that must not be silently reverted: the wasmtime 40.0.1 pin and why, native-tls, nightly, sandbox scope, `.cwasm` caching, the wasmrt plan. |
-| [testing.md](testing.md)                   | The `cargo test` suite (`tests/cli.rs`, every command ± a failing case, inversion record), the regression gate, what stays manual. |
-| [best-practices.md](best-practices.md)     | METHOD, not findings: the workspace's convergent rules (★), copied verbatim under a dated stamp (re-copied 2026-10-26), plus rules this repo pays for. |
+| [testing.md](testing.md)                   | The `cargo test` suite (`tests/cli.rs`, every command ± a failing case, inversion record), `bun test scripts/`, the regression gate, what stays manual. |
+| [best-practices.md](best-practices.md)     | METHOD, not findings: the workspace's convergent rules (★), copied verbatim under the canonical stamp (re-copied 2026-11-09), plus rules this repo pays for. |
 | `local/environment.md` 🔒                  | Gitignored, absent in a clone: this machine's drive, toolchain and path facts.                                     |
 
 ## Related files outside cmem

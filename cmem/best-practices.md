@@ -8,16 +8,17 @@ the incident that paid for it, and the origin tag. Rules rsxtk pays for itself a
 
 ## The convergent rules of the workspace (★)
 
-> Copied from `wasmExamples/cmem/best-practices.md` on 2026-09-20 (owner: canonical there,
-> duplicated here so this repo can be investigated on its own — open-book philosophy). Change them
-> there and re-copy; do not edit this block in place. Numbers are the canonical file's.
-> **Re-copied verbatim 2026-10-26** (workspace letters H6, H24): the 2026-09-20 copy was an
-> abridgement — bold sentences cut short, most incidents dropped — and 12 of the 28 bold sentences
-> no longer matched the canonical text (1.11, 3.1, 3.8, 4.3, 4.16, 5.2, 6.1, 6.2, 6.3, 7.3, 7.6,
-> 8.1). Checked with a one-time script comparing all 28 by number and normalized bold text: 12
-> differ before, 0 after. Commit ids inside the incidents are the siblings' (rule 3.10 / H21: look
-> them up in that sibling's history map before quoting; 6.1's `b8fafaa3f` is binaryang's pre-purge
-> id, public `8d9ba0cb9` — reported to the workspace 2026-10-26, kept here as the canonical text has it).
+> Copied from synapticforge1/cmem/best-practices.md on 2026-11-09
+>
+> (Owner: canonical there, duplicated here so this repo can be investigated on its own — open-book
+> philosophy. Change them there and re-copy; do not edit this block in place. Numbers are the
+> canonical file's.) First copied 2026-09-20 as an abridgement; re-copied verbatim 2026-10-26
+> (letters H6, H24: 12 of 28 bold sentences had drifted). **Re-copied 2026-11-09** under the
+> canonical stamp (letter H27; the folder was `wasmExamples`) and for 6.1's corrected commit id
+> (ledger C8): a one-time script comparing all 28 ★ bullets by number and FULL normalized text
+> (bold sentence and incident) found 1 difference before (6.1) and 0 after. Commit ids inside the
+> incidents are the siblings' (rule 3.10 / H21: look them up in that sibling's history map before
+> quoting).
 
 - **1.1 ★ An exit code is not evidence; diff the OUTPUT counts, per file.** Exit-0 runs silently
   dropped passes in four repos; binaryen-ts's serious defects were valid wasm with the wrong value;
@@ -91,7 +92,7 @@ the incident that paid for it, and the origin tag. Rules rsxtk pays for itself a
   development drive's FILESYSTEM (exFAT) was diagnosed wrong three times. [wazmrt + binaryen-ts + wasmtk + wasmrt]
 - **6.1 ★ A written result is a CLAIM: a commit message, a status line, a doc of a safety guard, a
   contract row verified by reading. Compare it to the artifact; put a pin where the tool enforces
-  it.** `b8fafaa3f` said "pin to 132" and left 116; prose has no failure mode. [binaryang + wabt-ts + wasmrt]
+  it.** `8d9ba0cb9` (was `b8fafaa3f` before binaryang's 2026-10-23 purge; corrected here 2026-10-26, ledger C8) said "pin to 132" and left 116; prose has no failure mode. [binaryang + wabt-ts + wasmrt]
 - **6.2 ★ Write down the thing you only said out loud; write the negatives (what was varied, what
   held fixed), the calibration, and what you did NOT check; distinguish clean / measured /
   UNMEASURED.** Knowledge that exists only in a conversation is operationally identical to

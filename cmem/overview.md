@@ -71,9 +71,10 @@ License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`). Prerequisites: ni
   token before). Built from commit `be056bd`; 779.1 KB; its SHA-256 equals the `--dry-run` package
   that was scanned (no drive paths; only the allowed `authors` email). The crates.io page now shows
   the org repository URL and no homepage. Tagged `rsxtk_v0.5.0` → `be056bd` (owner, 2026-10-23;
-  lightweight, like `rsxtk_v0.4.0`), pushed. Published by hand with `cargo publish`; the repo has no
-  CI and no `.github/`, so no trusted-publishing (OIDC) policy is involved (workspace letter H20
-  does not apply). The crates.io API exposes no author/email field — only the publisher's GitHub
+  lightweight, like `rsxtk_v0.4.0`), pushed. Published by hand with `cargo publish`; no
+  trusted-publishing (OIDC) policy is involved (workspace letter H20 does not apply). Since
+  2026-11-09 the only CI is the tag-triggered Release-page workflow, which publishes nothing
+  (`design-decisions.md` § Versioning and release). The crates.io API exposes no author/email field — only the publisher's GitHub
   login.
 
 ## History — purged 2026-10-23 (workspace letter H19; owner: "it is ok to change the files")
@@ -116,6 +117,8 @@ rsxtk/
   Cargo.toml  Cargo.lock        version line = the release arm (0.5.0)
   src/main.rs                   the whole program (534 lines, 2026-10-23)
   tests/cli.rs                  end-to-end `cargo test` suite (41 tests; testing.md)
+  scripts/github-release.ts     CI's Release-page maker (Bun; + .test.ts; design-decisions.md)
+  .github/workflows/release.yml tag-triggered: checks, then the Release page (2026-11-09)
   README.md  rsxtk_logo.png     public doc
   LICENSE-MIT  LICENSE-APACHE
   .gitattributes                LF everywhere, `*.png` binary (2026-10-26; testing.md § Line endings)
@@ -146,3 +149,12 @@ rsxtk/
   reported to the workspace, which owns the canonical text; H22 / H25 §3(d) the path test recorded
   in `INDEX.md` § Policy 2026-10-26; H24 not addressed to rsxtk (its old ★ copy had no 5.2
   incident) and satisfied by the re-copy.
+- **Letters re-read 2026-11-09:** H27 + ledger C8 — ★ block re-copied under the canonical stamp
+  `Copied from synapticforge1/cmem/best-practices.md on 2026-11-09`, 6.1 now cites `8d9ba0cb9`
+  (full-text check: 1 difference before, 0 after); no `wasmExamples` location left. H28 — record
+  only: the maintainer address stays in `Cargo.toml` `authors` alone; commits keep noreply; no
+  `cmem/` contact note (the permission is not used); rsxtk cites neither retired repo
+  (`wabt-ts`, `binaryen-ts`) as a location — they appear only as ★ origin tags. H30 — no `gh`
+  anywhere, CI included (`INDEX.md` § Tooling). H31 — Bun notations are the latest installed Bun
+  (1.4.4, 2026-11-09); rsxtk's only one is `release.yml` `BUN_VERSION` + `BUN_SHA256`. H32 — the
+  Release-page workflow (`design-decisions.md` § Versioning and release; open-work item 10).

@@ -87,3 +87,16 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
   `.cargo_vcs_info.json`, `.gitignore`, `Cargo.lock`, `Cargo.toml`(`.orig`), both licenses,
   `README.md`, `rsxtk_logo.png`, `src/main.rs`, `tests/cli.rs`.
 - Nothing is published unless the owner says so; `cargo publish` from a clean tree, tag after.
+- 🔒 **Every NEW tag gets its GitHub Release page from CI, never by hand, never by `gh`** (owner,
+  2026-11-09, workspace letter H32; `gh` banned in CI too, H30). `.github/workflows/release.yml`
+  (added 2026-11-09), on a pushed `rsxtk_v*` tag: `checks` (contents: read, no secret) — the tag
+  equals `rsxtk_v` + the `Cargo.toml` version, and `bun test scripts/` passes; then `release`
+  (contents: write, NO checkout) — waits until crates.io serves the version, fetches only
+  `scripts/github-release.ts` at `github.sha`, and runs it: the tag must exist and peel to
+  `github.sha` (a `POST /releases` would CREATE a missing tag), an existing page = done, else POST
+  `generate_release_notes` with the crates.io link on top, read back, peel again; 30 s per request.
+  Publishing stays BY HAND (no registry token in CI): the order is `cargo publish` → push the tag →
+  CI makes the page. A tag pushed before the publish fails the wait — publish, then re-run the job.
+  **No backfill** (owner: "only new tags will get release pages"): `rsxtk_v0.4.0` keeps its one manual
+  page (by `jrmarcum`, read through the REST API 2026-11-09); `rsxtk_v0.5.0` stays without one. Adapted from universalWasmLoader-rs's script
+  (rsxtk's tags are `rsxtk_vX.Y.Z`, not `vX.Y.Z`); unmeasured on GitHub until the next tag (item 10).
