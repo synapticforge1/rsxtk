@@ -65,17 +65,14 @@ License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`). Prerequisites: ni
   `redundant_homepage` lint: it repeated `repository`). `authors` carries the maintainer
   contact email — the one allowed email, which since 2026-10-26 may also be the commit
   author/committer address (owner; rsxtk keeps noreply; `INDEX.md` § Policy).
-- **Publishing**: crates.io crate `rsxtk`, 35 versions 0.1.0 → 0.5.0 (2026-01-06 → 2026-10-23), 11
-  not yanked: 0.3.3, 0.3.6 → 0.4.4, and 0.5.0 (crates.io API, 2026-10-23).
-  **0.5.0 published 2026-10-23** by the owner (`cargo login` + `cargo publish`; this machine had no
-  token before). Built from commit `be056bd`; 779.1 KB; its SHA-256 equals the `--dry-run` package
-  that was scanned (no drive paths; only the allowed `authors` email). The crates.io page now shows
-  the org repository URL and no homepage. Tagged `rsxtk_v0.5.0` → `be056bd` (owner, 2026-10-23;
-  lightweight, like `rsxtk_v0.4.0`), pushed. 0.5.0 and earlier were published by hand with
-  `cargo publish`. **From 0.5.1 (2026-11-09; 36 versions now, 12 not yanked) CI publishes** on a pushed `rsxtk_v*` tag, with the
-  repo secret `CARGO_REGISTRY_TOKEN` (an API token; no trusted-publishing (OIDC) policy, so
-  workspace letter H20 still does not apply) — `design-decisions.md` § Versioning and release. The crates.io API exposes no author/email field — only the publisher's GitHub
-  login.
+- **Publishing**: crates.io crate `rsxtk` (36 versions, 12 not yanked — crates.io API,
+  2026-11-12). Every release and how releases run: **[release.md](release.md)** (moved there
+  2026-11-12, letter H33 D3). Since 2026-11-12 CI publishes through crates.io **trusted
+  publishing** (OIDC; owner's D2) once the owner has registered it on crates.io — so workspace
+  letter H20 (trusted-publishing policies after the org move) applies from that registration on:
+  the policy names `synapticforge1/rsxtk` and `release.yml`. The crates.io page shows the org
+  repository URL and no homepage; the crates.io API exposes no author/email field — only the
+  publisher.
 
 ## History — purged 2026-10-23 (workspace letter H19; owner: "it is ok to change the files")
 
@@ -117,8 +114,10 @@ rsxtk/
   Cargo.toml  Cargo.lock        version line = the release arm (0.5.1)
   src/main.rs                   the whole program (534 lines, 2026-10-23)
   tests/cli.rs                  end-to-end `cargo test` suite (41 tests; testing.md)
-  scripts/github-release.ts     CI's Release-page maker (Bun; + .test.ts; design-decisions.md)
-  .github/workflows/release.yml tag-triggered: gate, crates.io publish, Release page (2026-11-09)
+  surface.txt                   the CLI-surface golden: every --help page (the bump floor)
+  scripts/                      the release tooling, Bun (+ *.test.ts): bump, release, compat,
+                                github-release, crates-io (release.md)
+  .github/workflows/release.yml on a push of main: checks → tag → page → publish (2026-11-12)
   README.md  rsxtk_logo.png     public doc
   LICENSE-MIT  LICENSE-APACHE
   .gitattributes                LF everywhere, `*.png` binary (2026-10-26; testing.md § Line endings)
@@ -158,3 +157,9 @@ rsxtk/
   anywhere, CI included (`INDEX.md` § Tooling). H31 — Bun notations are the latest installed Bun
   (1.4.4, 2026-11-09); rsxtk's only one is `release.yml` `BUN_VERSION` + `BUN_SHA256`. H32 — the
   Release-page workflow (`design-decisions.md` § Versioning and release; open-work item 10).
+- **Letters re-read 2026-11-12:** H33 — the uniform release shape in the owner's order (D1),
+  crates.io trusted publishing (D2), one record (D3): `release.md` (every slot U1–U12, the dated
+  path, the Release History); D2's crates.io registration and the old token's removal are owner
+  items (open-work 11). H34 — the owner's "commit" / "push" / "release", written into `INDEX.md`
+  by the workspace on the owner's direction (2026-11-10) and kept there as written. H31 — Bun still
+  1.4.4 (`bun --version`, 2026-11-12); nothing to move.

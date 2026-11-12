@@ -1,4 +1,6 @@
 /target
+/.compat/
+/.compat-prev/
 /CLAUDE.md
 /cmem/local/
 /.claude/settings.local.json

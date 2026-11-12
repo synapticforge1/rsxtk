@@ -8,9 +8,9 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/synapticforge1/rsxtk"
 documentation = "https://github.com/synapticforge1/rsxtk"
 readme = "README.md"
-# Project memory, CI and the release-page script are for working on rsxtk, not for crate users;
-# they stay public on GitHub.
-exclude = ["cmem/", ".github/", "scripts/"]
+# Project memory, CI, the release scripts and the CLI-surface golden are for working on rsxtk,
+# not for crate users; they stay public on GitHub.
+exclude = ["cmem/", ".github/", "scripts/", "surface.txt"]
 keywords = ["rust","wasm", "wasi", "toolkit", "cli"]
 categories = ["development-tools", "wasm"]
 

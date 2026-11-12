@@ -137,3 +137,11 @@ the incident that paid for it, and the origin tag. Rules rsxtk pays for itself a
   differed — and so did two builds of the SAME source (MinGW stamps the PE `TimeDateStamp` and
   `CheckSum`). Build one source twice, find the bytes that vary, mask exactly those, then compare
   (`testing.md` § Comparing binaries). [rsxtk, found 2026-10-26]
+- **R.5 A throwaway copy of the crate never shares the real crate's target directory.** The
+  release gate built rsxtk's previous-tag tests in a `.compat/` copy at the same name and version,
+  sharing the target dir to save the dependency build; after that, an edited clone's build read as
+  Fresh and `--help` still showed a flag that had been renamed — the gate would have compared a
+  stale binary and passed. Found only by inverting the gate with a real CLI change. Each copy now
+  builds in its own target subdirectory (`scripts/compat.ts` `targetDir`). The mechanism (cargo
+  keying the build by name and version, not folder) is the likely cause, not a measured one.
+  [rsxtk, found 2026-11-12]

@@ -52,8 +52,9 @@ cleanup policy (working memory, not an archive; git is the archive).
 file — not product code, not tests) **is TypeScript run by Bun** (`bun <file>.ts`). Rust is not a
 scripting mechanism here: `cargo -Zscript` builds an executable and "is a moving target" (owner,
 2026-10-22; workspace `working-rules.md` § Tooling rule 1). TypeScript scripts use `node:*`, web
-APIs and `Bun.*`, never `Deno.*` or `jsr:` (Deno is going away). rsxtk's committed scripts:
-`scripts/github-release.ts` (+ its test), since 2026-11-09. **A one-time script deleted after use may
+APIs and `Bun.*`, never `Deno.*` or `jsr:` (Deno is going away). rsxtk's committed scripts: the
+release tooling in `scripts/` (`bump`, `release`, `compat`, `github-release`, `crates-io`, each
+with tests where it talks to a network; `release.md`), since 2026-11-09. **A one-time script deleted after use may
 be a shell script**, still written with `Write`; promote it to Bun before committing it. No host
 Python. No committed bash/PowerShell/`.bat`. **No heredocs, ever, in any language**: not
 `<<'EOF'`, `@'…'@`, `bun -e "…"`, `node -e`, or `-F -` — commit messages go through
@@ -65,17 +66,19 @@ the repo's files; in a workflow, the REST API with `GITHUB_TOKEN` from a Bun ste
 version written is the latest installed Bun** (owner, 2026-11-09, letter H31; 1.4.4 on Windows and
 WSL, measured 2026-11-09): when the owner installs a newer one, move `release.yml`'s `BUN_VERSION`
 and `BUN_SHA256` (from Bun's `SHASUMS256.txt`) together at the next session; a dated test result
-stays until the test is re-run. 🔒 **Release pages come from CI** (letter H32) — see
-`design-decisions.md` § Versioning and release.
+stays until the test is re-run. 🔒 **Releases run in the owner's order, from CI only** (letters
+H32, H33): `bump.ts` → `release.ts` pushes `main` → CI checks → tag → page → crates.io —
+[release.md](release.md).
 
 ## Files
 
 | file                                       | what it holds                                                                                                     |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| [open-work.md](open-work.md)               | What is outstanding, and nothing else: the wasmrt switch (item 3) — the only open item. |
+| [open-work.md](open-work.md)               | What is outstanding, and nothing else: the wasmrt switch (item 3); 🗓️ the owner's crates.io trusted-publishing registration (item 11). |
+| [release.md](release.md)                   | 🔒 The ONE release record (H33 D3): how a release runs (bump → release.ts pushes `main` → CI checks → tag → page → crates.io trusted publishing; U1–U12; owner items) and § "Release History", newest first. |
 | [overview.md](overview.md)                 | What rsxtk is, the CLI as `main.rs` defines it (README lags), the build pipeline, dependencies, hosting (`synapticforge1` org), the 2026-10-23 history purge + old→new hash map, repo layout. |
-| [design-decisions.md](design-decisions.md) | Invariants that must not be silently reverted: the wasmtime 40.0.1 pin and why, native-tls, nightly, sandbox scope, `.cwasm` caching, the wasmrt plan. |
-| [testing.md](testing.md)                   | The `cargo test` suite (`tests/cli.rs`, every command ± a failing case, inversion record), `bun test scripts/`, the regression gate, what stays manual. |
+| [design-decisions.md](design-decisions.md) | Invariants that must not be silently reverted: the wasmtime 40.0.1 pin and why, native-tls, nightly, sandbox scope, `.cwasm` caching, the wasmrt plan, versioning and the release invariants. |
+| [testing.md](testing.md)                   | The `cargo test` suite (`tests/cli.rs`, every command ± a failing case, inversion record), `bun test scripts/` (45), `surface.txt`, the regression gate, what stays manual. |
 | [best-practices.md](best-practices.md)     | METHOD, not findings: the workspace's convergent rules (★), copied verbatim under the canonical stamp (re-copied 2026-11-09), plus rules this repo pays for. |
 | `local/environment.md` 🔒                  | Gitignored, absent in a clone: this machine's drive, toolchain and path facts.                                     |
 
@@ -83,3 +86,22 @@ stays until the test is re-run. 🔒 **Release pages come from CI** (letter H32)
 
 - `README.md` — public doc. `Cargo.toml` — the version line. `../../cmem/` — the workspace map,
   contracts and rules shared with wasmtk, wasmrt, wazmrt, binaryang and the loaders.
+
+## Owner commands: "commit", "push", "release" (owner, 2026-11-10)
+
+🔒 Written into every project by the workspace session on the owner's direction (2026-11-10:
+"please write that into each project"; workspace `cmem/working-rules.md` Tooling rule 12, letter
+H34). When the owner says:
+
+- **"commit"** — first run "update the project memory files" (re-derive this repo's `cmem/` from
+  its current state), then commit to the branch being worked on. Nothing is pushed.
+- **"push"** — perform "commit", then merge the branch into `main`, then push `main` (and the
+  working branch) to GitHub (`origin`) and read it back with `git ls-remote`.
+- **"release"** — perform "push", then the release process: the workspace's
+  `cmem/release-process.md` §§ 5–8 — CI checks first, then CI pushes the tag, then the GitHub
+  Release page from the tag, then the publish to the registry — recorded in `cmem/release.md`
+  § "Release History" (newest first, a summary of what changed). The level (patch / minor /
+  major) is the owner's: ask if it was not given.
+
+Each command includes the one before it, and none goes further than its own word (a "commit"
+never pushes, a "push" never releases). This repo's own gate and merge rules apply at each step.

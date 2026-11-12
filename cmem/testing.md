@@ -37,9 +37,13 @@ cargo clippy --all-targets -- -D warnings   # 0 warnings since 2026-10-23 — ke
 cargo test
 ```
 
-**CI repeats it on every tag** (`release.yml` `checks`, `--locked`, on `nightly-2026-11-04`, the
-same nightly as the local run) before anything is published. Run 2026-11-09 for 0.5.1 locally
-(Windows, nightly 2026-11-04): release build OK, clippy 0 warnings with `-D warnings`, 41 pass.
+plus, since 2026-11-12, `bun test scripts/` and `bun scripts/compat.ts surface --check` (a CLI
+change regenerates `surface.txt`: `bun scripts/compat.ts surface`, review the diff, commit it).
+
+**CI repeats it on every push of `main`** (`release.yml` `checks`, `--locked`, on
+`nightly-2026-11-04`, the same nightly as the local run) before anything is tagged. Run
+2026-11-12 locally (Windows, nightly 2026-11-04): release build OK, clippy 0 warnings with `-D
+warnings`, 41 pass, 45 script tests pass, `surface.txt` fresh (60 entries).
 
 Use `CARGO_TARGET_DIR` on NTFS and SHORT: a deep path breaks MinGW `dlltool` in `windows-sys`
 ("Can't open def file"); `%TEMP%\rsxtk-t` works (`local/environment.md`).
@@ -66,15 +70,25 @@ multi-line literal, a `\` continuation).
 `git ls-files --eol` — every text file `i/lf w/lf`. A CRLF file in the working tree after a
 renormalize is refreshed by deleting it and `git checkout -- <file>`.
 
-## The release-page script: `bun test scripts/` (2026-11-09)
+## The release scripts: `bun test scripts/` (2026-11-12)
 
-`scripts/github-release.test.ts` runs `scripts/github-release.ts` as a child process against a
-mock GitHub REST API (`Bun.serve`): 12 tests — lightweight and annotated tags, missing tag, tag at
-another commit, existing page, POST rejected, draft read-back, tag moved by the POST, stalled API
-(time limit), dry-run, no token, a `vX.Y.Z` tag refused. 12 pass on Bun 1.4.4 (2026-11-09).
-**Inverted** the same day on scratch copies: removing the missing-tag refusal → 1 fail (that test);
-replacing the second peel with `sha` → 2 fail (the happy path's ordering check and "tag moved by
-the POST"). CI's `checks` job runs it on every tag; a change to `scripts/` runs it locally.
+45 tests in 3 files, all pass on Bun 1.4.4 (2026-11-12):
+- `github-release.test.ts` (21) — `state` / `tag` / `page` as a child process against a mock
+  GitHub REST API (`Bun.serve`): new / rerun / none; the annotated tag created and read back,
+  already there, refused elsewhere, a bad read-back, a rejected ref; the page in H32's order
+  (missing tag, tag elsewhere, existing page, POST rejected, draft read-back, tag moved by the
+  POST, dry-run, no token); a stalled API hits the time limit; non-X.Y.Z refused.
+- `crates-io.test.ts` (14) — `has` / `token` / `revoke` / `readback` against one mock playing
+  GitHub's OIDC endpoint and crates.io: the token masked and never printed, a refused exchange,
+  the read-back's polling, yanked = fatal.
+- `compat.test.ts` (10) — the CLI floor on hand-written `--help` pages: descriptions ignored;
+  removed / renamed / reordered → major; a new required argument on an existing command → major;
+  a new optional argument, option, value, or a whole new command → minor; the version helpers.
+**Inverted** 2026-11-12 on scratch copies, one-line mutants each caught by its own test: the floor
+ignoring removals (2 fail), no tag read-back (1), rerun misreported as new (1), yanked accepted
+(1). The binary-driven half (`surfaceText`, stale golden, the previous tag's tests) was inverted
+with the real binary in the release rehearsal (`release.md` § How the release path got here).
+On 2026-11-09 the first page-only script was inverted the same way (2 mutants).
 
 ## Manual checks still worth a look
 

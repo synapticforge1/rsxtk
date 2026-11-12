@@ -16,3 +16,10 @@ closed 2026-11-09: 10 — the release workflow's first real run, 0.5.1, all thre
   interleaved, `.cwasm` off), then swap `wasmtime` + `wasmtime-wasi` for `wasmrt-core`; keep `wat`
   / `wasmprinter` / `walrus`. Owner decision that rsxtk goes first with wasmtk (2026-09-20). The
   referee is `cargo test` (engine-agnostic assertions); it must pass unchanged after the swap.
+- **11. 🗓️ OWNER — crates.io trusted publishing for rsxtk** (D2, letter H33; added 2026-11-12):
+  register it on crates.io (`rsxtk` → Settings → Trusted Publishing → GitHub,
+  `synapticforge1/rsxtk`, workflow `release.yml`, no environment) BEFORE the next release; after
+  that release publishes through it, delete the repo secret `CARGO_REGISTRY_TOKEN` and revoke its
+  crates.io token. Then the first release in the owner's order is the measurement: the run's four
+  jobs, the annotated tag by `github-actions[bot]`, the page, crates.io's `trustpub_data`, U10 as
+  a user — recorded in `release.md` and the workspace ledger's H33 row.

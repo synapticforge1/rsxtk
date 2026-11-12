@@ -1,0 +1,204 @@
+## rsxtk --help
+Usage: rsxtk <COMMAND>
+
+Commands:
+  run       🏃 Run a WASI app or script
+  mod       🧩 Execute functions from a library
+  csrun     🚀 Native execution via 'cargo -Z script'
+  build     🔨 Build a universal .wasm or .wat file
+  convert   🔄 Convert between .wasm and .wat
+  init      ✨ Init a new script template
+  initmod   📦 Init a new library module template
+  resource  📂 Create 'rsc' folder for local files
+  bench     ⏱️ Benchmark execution speed
+  add       ➕ Add a dependency (Auto-injects manifest if missing)
+  remove    ➖ Remove a dependency
+  list      📦 List script dependencies
+  fmt       ✨ Format Rust code (Preflight check for manifests)
+  optimize  🧹 Optimize WASM via Walrus
+  clean     🗑️ Wipe the .tk build cache
+  info      📝 View WASM metadata (wasmtk style)
+  help      Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help     Print help
+  -V, --version  Print version
+
+## rsxtk run --help
+🏃 Run a WASI app or script
+
+Usage: rsxtk run <PATH>
+
+Arguments:
+  <PATH>  
+
+Options:
+  -h, --help  Print help
+
+## rsxtk mod --help
+🧩 Execute functions from a library
+
+Usage: rsxtk mod <PATH> [ARGS]...
+
+Arguments:
+  <PATH>     
+  [ARGS]...  
+
+Options:
+  -h, --help  Print help
+
+## rsxtk csrun --help
+🚀 Native execution via 'cargo -Z script'
+
+Usage: rsxtk csrun <PATH>
+
+Arguments:
+  <PATH>  
+
+Options:
+  -h, --help  Print help
+
+## rsxtk build --help
+🔨 Build a universal .wasm or .wat file
+
+Usage: rsxtk build <PATH> <TARGET>
+
+Arguments:
+  <PATH>    
+  <TARGET>  [possible values: wasi, wasm, wat]
+
+Options:
+  -h, --help  Print help
+
+## rsxtk convert --help
+🔄 Convert between .wasm and .wat
+
+Usage: rsxtk convert [OPTIONS] <INPUT>
+
+Arguments:
+  <INPUT>  
+
+Options:
+  -o, --output <OUTPUT>  
+  -h, --help             Print help
+
+## rsxtk init --help
+✨ Init a new script template
+
+Usage: rsxtk init <NAME>
+
+Arguments:
+  <NAME>  
+
+Options:
+  -h, --help  Print help
+
+## rsxtk initmod --help
+📦 Init a new library module template
+
+Usage: rsxtk initmod <NAME>
+
+Arguments:
+  <NAME>  
+
+Options:
+  -h, --help  Print help
+
+## rsxtk resource --help
+📂 Create 'rsc' folder for local files
+
+Usage: rsxtk resource [PATH]
+
+Arguments:
+  [PATH]  
+
+Options:
+  -h, --help  Print help
+
+## rsxtk bench --help
+⏱️ Benchmark execution speed
+
+Usage: rsxtk bench [OPTIONS] <PATH>
+
+Arguments:
+  <PATH>  
+
+Options:
+  -i, --iterations <ITERATIONS>  [default: 5]
+  -h, --help                     Print help
+
+## rsxtk add --help
+➕ Add a dependency (Auto-injects manifest if missing)
+
+Usage: rsxtk add <PATH> <CRATE_NAME> [VERSION]
+
+Arguments:
+  <PATH>        
+  <CRATE_NAME>  
+  [VERSION]     
+
+Options:
+  -h, --help  Print help
+
+## rsxtk remove --help
+➖ Remove a dependency
+
+Usage: rsxtk remove <PATH> <CRATE_NAME>
+
+Arguments:
+  <PATH>        
+  <CRATE_NAME>  
+
+Options:
+  -h, --help  Print help
+
+## rsxtk list --help
+📦 List script dependencies
+
+Usage: rsxtk list <PATH>
+
+Arguments:
+  <PATH>  
+
+Options:
+  -h, --help  Print help
+
+## rsxtk fmt --help
+✨ Format Rust code (Preflight check for manifests)
+
+Usage: rsxtk fmt <PATH>
+
+Arguments:
+  <PATH>  
+
+Options:
+  -h, --help  Print help
+
+## rsxtk optimize --help
+🧹 Optimize WASM via Walrus
+
+Usage: rsxtk optimize [OPTIONS] --input <INPUT>
+
+Options:
+  -i, --input <INPUT>    
+  -o, --output <OUTPUT>  
+  -h, --help             Print help
+
+## rsxtk clean --help
+🗑️ Wipe the .tk build cache
+
+Usage: rsxtk clean
+
+Options:
+  -h, --help  Print help
+
+## rsxtk info --help
+📝 View WASM metadata (wasmtk style)
+
+Usage: rsxtk info <PATH>
+
+Arguments:
+  <PATH>  
+
+Options:
+  -h, --help  Print help
