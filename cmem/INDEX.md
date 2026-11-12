@@ -74,7 +74,7 @@ H32, H33): `bump.ts` → `release.ts` pushes `main` → CI checks → tag → pa
 
 | file                                       | what it holds                                                                                                     |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| [open-work.md](open-work.md)               | What is outstanding, and nothing else: the wasmrt switch (item 3); 🗓️ the owner's crates.io trusted-publishing registration (item 11). |
+| [open-work.md](open-work.md)               | What is outstanding, and nothing else: the wasmrt switch (item 3); 🗓️ the owner retires the old crates.io token (item 11). |
 | [release.md](release.md)                   | 🔒 The ONE release record (H33 D3): how a release runs (bump → release.ts pushes `main` → CI checks → tag → page → crates.io trusted publishing; U1–U12; owner items) and § "Release History", newest first. |
 | [overview.md](overview.md)                 | What rsxtk is, the CLI as `main.rs` defines it (README lags), the build pipeline, dependencies, hosting (`synapticforge1` org), the 2026-10-23 history purge + old→new hash map, repo layout. |
 | [design-decisions.md](design-decisions.md) | Invariants that must not be silently reverted: the wasmtime 40.0.1 pin and why, native-tls, nightly, sandbox scope, `.cwasm` caching, the wasmrt plan, versioning and the release invariants. |

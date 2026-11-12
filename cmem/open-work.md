@@ -16,8 +16,7 @@ closed 2026-11-09: 10 — the release workflow's first real run, 0.5.1, all thre
   interleaved, `.cwasm` off), then swap `wasmtime` + `wasmtime-wasi` for `wasmrt-core`; keep `wat`
   / `wasmprinter` / `walrus`. Owner decision that rsxtk goes first with wasmtk (2026-09-20). The
   referee is `cargo test` (engine-agnostic assertions); it must pass unchanged after the swap.
-- **11. 🗓️ OWNER — crates.io trusted publishing for rsxtk** (D2, letter H33; added 2026-11-12):
-  registered on crates.io by the owner (owner, 2026-11-12: "Yes, it's registered" — `rsxtk` →
-  Settings → Trusted Publishing → GitHub, `synapticforge1/rsxtk`, workflow `release.yml`);
-  UNMEASURED until 0.5.2 publishes through it. After that, delete the repo secret
-  `CARGO_REGISTRY_TOKEN` and revoke its crates.io token (owner).
+- **11. 🗓️ OWNER — retire the old crates.io token** (D2, letter H33; added 2026-11-12): trusted
+  publishing is registered and MEASURED (0.5.2's `trustpub_data`, `release.md`), so nothing uses
+  the repo secret `CARGO_REGISTRY_TOKEN` any more: delete it (GitHub → Settings → Secrets and
+  variables → Actions) and revoke that API token on crates.io.

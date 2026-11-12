@@ -10,7 +10,7 @@ project under `.tk/`, compiles to `wasm32-wasip1`, pre-compiles to a `.cwasm` fo
 and runs it in a WASI preview-1 sandbox pre-opened on the script's parent directory. It also runs
 `.wasm`, `.wat` and `.cwasm` directly, and can run a script natively via `cargo -Z script`.
 
-## The CLI as `src/main.rs` defines it (0.5.0; unchanged in 0.5.1)
+## The CLI as `src/main.rs` defines it (0.5.0; unchanged in 0.5.1 and 0.5.2 — `surface.txt`)
 
 `clap` derive, `rename_all = "lowercase"`. Matches `rsxtk --help` (0.5.0 binary, 2026-10-23; the same 16
 commands as 0.4.4);
@@ -111,7 +111,7 @@ License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`). Prerequisites: ni
 
 ```
 rsxtk/
-  Cargo.toml  Cargo.lock        version line = the release arm (0.5.1)
+  Cargo.toml  Cargo.lock        version line (0.5.2); bump.ts writes it
   src/main.rs                   the whole program (534 lines, 2026-10-23)
   tests/cli.rs                  end-to-end `cargo test` suite (41 tests; testing.md)
   surface.txt                   the CLI-surface golden: every --help page (the bump floor)

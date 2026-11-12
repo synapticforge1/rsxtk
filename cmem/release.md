@@ -65,8 +65,8 @@ was not given.** Run from the repo root on `main`, with `CARGO_TARGET_DIR` on NT
 
 **🗓️ Owner items for trusted publishing (D2), before the next release:** on crates.io, `rsxtk` →
 Settings → Trusted Publishing → add GitHub: repository `synapticforge1/rsxtk`, workflow
-`release.yml` (no environment) — **registered by the owner, 2026-11-12** (their word; measured by
-the first publish through it). Without it the `publish` job stops at "Trusted-publishing token"
+`release.yml` (no environment) — **registered by the owner, 2026-11-12; MEASURED by 0.5.2**
+(crates.io's `trustpub_data` names this repository and run). Without it the `publish` job stops at "Trusted-publishing token"
 with crates.io's "No matching Trusted Publishing config" (after the tag and the page exist — U12's
 re-run finishes it). After the first release publishes through it, delete the GitHub secret
 `CARGO_REGISTRY_TOKEN` and revoke that crates.io API token: nothing references it any more.
@@ -96,14 +96,44 @@ re-run finishes it). After the first release publishes through it, delete the Gi
   target directory, and afterwards the edited clone's build read as Fresh and `--help` still
   showed the old flag — the gate would have checked a stale binary. Each throwaway crate now
   builds in its own target subdirectory (`compat.ts` `targetDir`); the repo-wide re-run, from a
-  fresh clone and a fresh target directory, was green end to end. UNMEASURED on GitHub until the
-  first release in this order.
+  fresh clone and a fresh target directory, was green end to end. **Measured on GitHub by 0.5.2**
+  (run 43271903460, below).
 
 ## Release History
 
-Every version on crates.io, newest first (36 versions, 12 not yanked — crates.io API,
-2026-11-12). Before 0.5.0 the repo kept no memory and its commit messages say "update"; those
-entries hold what is known and say so.
+Every version on crates.io, newest first (37 versions, 13 not yanked — crates.io API,
+2026-11-12, after 0.5.2). Before 0.5.0 the repo kept no memory and its commit messages say
+"update"; those entries hold what is known and say so.
+
+### 0.5.2 — 2026-11-12 (patch) — the first release in the owner's order
+
+**What changed:** nothing in `src/` or `tests/`; the CLI is 0.5.1's (floor patch). The release
+process (workspace H33 / H34, the owner's D1–D3): `bump.ts` requires the level and commits;
+`release.ts` pushes `main` only; CI runs checks → tag → page → publish; crates.io **trusted
+publishing** replaces the stored token; the CLI-surface golden `surface.txt` is the bump floor;
+this file is the one release record. The crate's manifest also excludes `surface.txt`.
+**How (owner: "release", level patch, trusted publisher registered — asked and answered):** the
+memory commit `7c2f970` was pushed first; its run **43267892511** was the non-release path —
+`checks` green (state none; the golden fresh on Linux too, so `rsxtk.exe` → `rsxtk`
+normalization holds), the release-mode gate, `tag`, `release`, `publish` skipped. Then
+`bump.ts patch` made `bump to v0.5.2` `0a19a93` (floor patch over `rsxtk_v0.5.1`, its tests
+41/41). `release.ts` refused ONCE at "cargo package --locked failed" with nothing pushed (the
+message was cut by my output filter — cause UNMEASURED; `cargo package --locked` alone then
+passed, and the re-run passed every guard and the gate) and then pushed `main` = `0a19a93`, no
+tag. **Run 43271903460**, every job and step green, first attempt, in the owner's order (UTC,
+2026-11-12):
+- `checks` 17:40:27–17:49:05, including `compat.ts --release`.
+- `tag` 17:49:08–14: the annotated `rsxtk_v0.5.2` (object `f2273fb`, tagger
+  `github-actions[bot]`, 17:49:11Z), peeling to `0a19a93`.
+- `release` 17:49:17–24: the page "rsxtk 0.5.2" by `github-actions[bot]`, not a draft, crates.io
+  link on top, `releases/latest`.
+- `publish` 17:49:27–44: OIDC → token, `cargo publish --no-verify`, revoke, read-back.
+**Read back:** crates.io 0.5.2 created 17:49:40Z, not yanked; **`trustpub_data` = {provider
+github, repository synapticforge1/rsxtk, run_id 43271903460, sha `0a19a93`}** — the owner's
+trusted publisher is MEASURED. `git ls-remote`: `rsxtk_v0.5.2` → `f2273fb`, `^{}` → `0a19a93`.
+**As a user (U10):** `cargo install rsxtk --version =0.5.2 --locked` into a scratch root, own
+target dir → `rsxtk --version` = `rsxtk 0.5.2`; `rsxtk run hello.wat` (a WASI `fd_write`) printed
+"hello from 0.5.2", exit 0.
 
 ### 0.5.1 — 2026-11-09 (patch) — the first release by CI
 
