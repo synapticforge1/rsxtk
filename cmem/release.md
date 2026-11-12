@@ -65,7 +65,8 @@ was not given.** Run from the repo root on `main`, with `CARGO_TARGET_DIR` on NT
 
 **🗓️ Owner items for trusted publishing (D2), before the next release:** on crates.io, `rsxtk` →
 Settings → Trusted Publishing → add GitHub: repository `synapticforge1/rsxtk`, workflow
-`release.yml` (no environment). Until then the `publish` job stops at "Trusted-publishing token"
+`release.yml` (no environment) — **registered by the owner, 2026-11-12** (their word; measured by
+the first publish through it). Without it the `publish` job stops at "Trusted-publishing token"
 with crates.io's "No matching Trusted Publishing config" (after the tag and the page exist — U12's
 re-run finishes it). After the first release publishes through it, delete the GitHub secret
 `CARGO_REGISTRY_TOKEN` and revoke that crates.io API token: nothing references it any more.
