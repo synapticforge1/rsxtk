@@ -43,7 +43,8 @@ change regenerates `surface.txt`: `bun scripts/compat.ts surface`, review the di
 **CI repeats it on every push of `main`** (`release.yml` `checks`, `--locked`, on
 `nightly-2026-11-04`, the same nightly as the local run) before anything is tagged. Run
 2026-11-12 locally (Windows, nightly 2026-11-04): release build OK, clippy 0 warnings with `-D
-warnings`, 41 pass, 45 script tests pass, `surface.txt` fresh (60 entries).
+warnings`, 41 pass, 45 script tests pass, `surface.txt` fresh (60 entries). Re-run 2026-11-19
+(Windows 11, win-x64, same nightly): the same, with 57 script tests; release build 3 min 29 s.
 
 Use `CARGO_TARGET_DIR` on NTFS and SHORT: a deep path breaks MinGW `dlltool` in `windows-sys`
 ("Can't open def file"); `%TEMP%\rsxtk-t` works (`local/environment.md`).
@@ -72,7 +73,13 @@ renormalize is refreshed by deleting it and `git checkout -- <file>`.
 
 ## The release scripts: `bun test scripts/` (2026-11-12)
 
-45 tests in 3 files, all pass on Bun 1.4.4 (2026-11-12):
+57 tests in 4 files, all pass on Bun 1.4.4 (2026-11-19; 45 in 3 files until the privacy gate's 12):
+- `check-privacy.test.ts` (12, 2026-11-19) — machine paths (drive, WSL, Git Bash, macOS, Linux;
+  the CI runner's home and placeholders pass), token shapes, a URL password, masking, the one
+  maintainer address in `Cargo.toml` only, tracked private files, UTF-16 text, arguments. Planted
+  values are built by concatenation so the file passes its own gate. **Inverted** with three
+  one-line mutants (issues file not private, any file may hold the maintainer, UTF-16 skipped),
+  each caught by its own test.
 - `github-release.test.ts` (21) — `state` / `tag` / `page` as a child process against a mock
   GitHub REST API (`Bun.serve`): new / rerun / none; the annotated tag created and read back,
   already there, refused elsewhere, a bad read-back, a rejected ref; the page in H32's order

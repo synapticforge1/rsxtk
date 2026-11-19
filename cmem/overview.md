@@ -25,7 +25,7 @@ commands as 0.4.4);
 | `convert`  | `<input> [-o output]`             | `.wasm` ⇄ `.wat` (via `wat` / `wasmprinter`)                      |
 | `init`     | `<name>`                          | new script template with manifest header                          |
 | `initmod`  | `<name>`                          | new library-module template (no `fn main` → built as a `cdylib`; `mod <name>.rs add 2 3` → `5`) |
-| `resource` | `[dir]`                           | create `<dir>/rsc/` (default `.`); a FILE path fails (os error 183). Read at run time via the preopen; mirrored to `.tk/<stem>/src/rsc/` for `include_str!` (2026-10-23) |
+| `resource` | `[dir]`                           | create `<dir>/rsc/` (default `.`); a FILE path fails (os error 183) — see below |
 | `bench`    | `<path> [-i N=5]`                 | time N executions                                                 |
 | `add`      | `<path> <crate> [version]`        | add a dependency; missing version fetched from crates.io (`reqwest`, `USER_AGENT`) |
 | `remove`   | `<path> <crate>`                  | remove a dependency (exact name match since 2026-10-23)           |
@@ -34,6 +34,9 @@ commands as 0.4.4);
 | `optimize` | `-i <input> [-o output]`          | optimize a `.wasm` via `walrus`                                   |
 | `clean`    |                                   | wipe `.tk/`                                                       |
 | `info`     | `<path>`                          | export signatures (params / results), "wasmtk style"              |
+
+`rsc/` is read at run time through the preopen, and mirrored to `.tk/<stem>/src/rsc/` for
+`include_str!` (2026-10-23).
 
 Engine config (`create_engine`): Cranelift `OptLevel::Speed`, SIMD, bulk memory, multi-memory on.
 ⚠️ No wasmtime disk cache is configured (corrected 2026-10-23 — the README and this file used to
@@ -45,11 +48,15 @@ machine id (OS + arch + hostname hash) matches and the `.cwasm` is newer than th
 
 | crate                        | version  | why / constraint                                                              |
 | ---------------------------- | -------- | ----------------------------------------------------------------------------- |
-| `wasmtime`                   | ^40.0.1 (lock 40.0.4) | `default-features = false`, features `cranelift`, `runtime`; **42+ reintroduces `aws-lc-sys` (NASM + cmake)**. `component-model` is still ON — `wasmtime-wasi` (`p2`, implied by `p1`) and `wasmtime-wasi-io` enable it |
+| `wasmtime`                   | ^40.0.1 (lock 40.0.4) | `default-features = false`, `cranelift`, `runtime`; **42+ pulls `aws-lc-sys`** (below) |
 | `wasmtime-wasi`              | ^40.0.1 (lock 40.0.4) | `p1` requested; it implies `p2`                                |
 | `wat`, `wasmprinter`, `walrus` | 1.244 / 0.244 / 0.24.4 | text ⇄ binary and optimization; **toolkit scope, stay when the engine changes** |
 | `reqwest`                    | 0.13.1   | `blocking`, `json`, `http2`, **`native-tls`** (Windows SChannel — no cmake/NASM) |
 | `clap` 4.5, `anyhow`, `serde`, `serde_json` | — | CLI, errors, manifest                                          |
+
+- `wasmtime` 42+ reintroduces `aws-lc-sys`, which needs NASM + cmake (`design-decisions.md`).
+- `component-model` is still ON: `wasmtime-wasi` (`p2`, implied by `p1`) and `wasmtime-wasi-io`
+  enable it.
 
 Release profile: `opt-level = 3`, LTO, `codegen-units = 1`, `panic = "abort"`, `strip`. Edition 2024.
 License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`). Prerequisites: nightly Rust,
@@ -64,7 +71,7 @@ License `MIT OR Apache-2.0` (`LICENSE-MIT`, `LICENSE-APACHE`). Prerequisites: ni
   since the 0.5.0 publish). `homepage` was removed 2026-10-23 (Cargo's
   `redundant_homepage` lint: it repeated `repository`). `authors` carries the maintainer
   contact email — the one allowed email, which since 2026-10-26 may also be the commit
-  author/committer address (owner; rsxtk keeps noreply; `INDEX.md` § Policy).
+  author/committer address (owner; rsxtk keeps noreply; `working-rules.md` § Privacy).
 - **Publishing**: crates.io crate `rsxtk` (36 versions, 12 not yanked — crates.io API,
   2026-11-12). Every release and how releases run: **[release.md](release.md)** (moved there
   2026-11-12, letter H33 D3). Since 2026-11-12 CI publishes through crates.io **trusted
@@ -115,15 +122,17 @@ rsxtk/
   src/main.rs                   the whole program (534 lines, 2026-10-23)
   tests/cli.rs                  end-to-end `cargo test` suite (41 tests; testing.md)
   surface.txt                   the CLI-surface golden: every --help page (the bump floor)
-  scripts/                      the release tooling, Bun (+ *.test.ts): bump, release, compat,
-                                github-release, crates-io (release.md)
+  scripts/                      Bun (+ *.test.ts): the release tooling — bump, release, compat,
+                                github-release, crates-io (release.md); the gates check-cmem and
+                                check-privacy (working-rules.md, 2026-11-19)
   .github/workflows/release.yml on a push of main: checks → tag → page → publish (2026-11-12)
   README.md  rsxtk_logo.png     public doc
   LICENSE-MIT  LICENSE-APACHE
   .gitattributes                LF everywhere, `*.png` binary (2026-10-26; testing.md § Line endings)
   CLAUDE.md                     gitignored pointer (untracked 2026-10-20; was committed empty before)
   .claude/settings.local.json   gitignored (machine-local tool permissions)
-  cmem/                         this memory (first committed 2026-10-20); cmem/local/ gitignored
+  cmem/                         this memory (first committed 2026-10-20); cmem/local/ and
+                                cmem/review-issues.md gitignored; cmem/archive/ closed items
   target/                       build output (gitignored)
 ```
 
@@ -138,28 +147,7 @@ rsxtk/
   would not be the default on an interpreter. 🔒 2026-09-20: rsxtk and wasmtk receive the runtime
   slot first, for execution speed during development; the loaders follow. The rlib rsxtk would
   link has never been measured (wasmrt T11).
-- Workspace rules, contracts and the cross-repo map: `../../cmem/INDEX.md`.
-- **Workspace letters, rsxtk's side** (`../../cmem/handoffs.md`; re-read 2026-10-26): H6 ★ block
-  re-copied verbatim 2026-10-26 (`best-practices.md`; SemVer gate moot while rsxtk has no `pub`
-  API); H15 nothing to port; H16 `maintenance.strategy gc` set; H17 no stale links; H19 purged
-  (§ History; the 2026-10-26 address withdrawal changes nothing here); H20 not applicable
-  (§ Hosting); H21 rsxtk's own text quotes no sibling's rewritten id — the verbatim ★ 6.1 does
-  (`b8fafaa3f`, binaryang's pre-purge id; public `8d9ba0cb9`, same subject, measured 2026-10-26),
-  reported to the workspace, which owns the canonical text; H22 / H25 §3(d) the path test recorded
-  in `INDEX.md` § Policy 2026-10-26; H24 not addressed to rsxtk (its old ★ copy had no 5.2
-  incident) and satisfied by the re-copy.
-- **Letters re-read 2026-11-09:** H27 + ledger C8 — ★ block re-copied under the canonical stamp
-  `Copied from synapticforge1/cmem/best-practices.md on 2026-11-09`, 6.1 now cites `8d9ba0cb9`
-  (full-text check: 1 difference before, 0 after); no `wasmExamples` location left. H28 — record
-  only: the maintainer address stays in `Cargo.toml` `authors` alone; commits keep noreply; no
-  `cmem/` contact note (the permission is not used); rsxtk cites neither retired repo
-  (`wabt-ts`, `binaryen-ts`) as a location — they appear only as ★ origin tags. H30 — no `gh`
-  anywhere, CI included (`INDEX.md` § Tooling). H31 — Bun notations are the latest installed Bun
-  (1.4.4, 2026-11-09); rsxtk's only one is `release.yml` `BUN_VERSION` + `BUN_SHA256`. H32 — the
-  Release-page workflow (`design-decisions.md` § Versioning and release; open-work item 10).
-- **Letters re-read 2026-11-12:** H33 — the uniform release shape in the owner's order (D1),
-  crates.io trusted publishing (D2), one record (D3): `release.md` (every slot U1–U12, the dated
-  path, the Release History); D2's crates.io registration and the old token's removal are owner
-  items (open-work 11). H34 — the owner's "commit" / "push" / "release", written into `INDEX.md`
-  by the workspace on the owner's direction (2026-11-10) and kept there as written. H31 — Bun still
-  1.4.4 (`bun --version`, 2026-11-12); nothing to move.
+- Workspace rules, contracts and the cross-repo map: `../workspace/cmem/INDEX.md` (beside this repo,
+  since 2026-11-19; letter H42). The letters addressed to rsxtk: `working-rules.md` § Workspace.
+- rsxtk's answers to the letters before 2026-11-19:
+  [archive/letters-answered-to-2026-11-19.md](archive/letters-answered-to-2026-11-19.md).

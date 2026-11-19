@@ -1,14 +1,14 @@
 # release.md — how a release runs here, and every release (newest first)
 
 🔒 The ONE place rsxtk's releases are recorded (owner, 2026-11-10; workspace letter H33 D3). Other
-files point here. The workspace's uniform shape is `../../cmem/release-process.md` § 5 (slots
+files point here. The workspace's uniform shape is `../workspace/cmem/release-process.md` § 5 (slots
 U1–U12); this file says how rsxtk fills each slot. Reference repo for crates.io:
 universalWasmLoader-rs (`../../universalWasmLoader/universalWasmLoader-rs/cmem/release.md`), whose
 1.0.5 ran this order on GitHub first (2026-11-11).
 
 ## How a release runs (since 2026-11-12, the owner's order)
 
-The owner says **"release"** (H34, `INDEX.md` § Owner commands): memory → commit → merge into
+The owner says **"release"** (H34, `working-rules.md` § Owner commands): memory → commit → merge into
 `main` → push → then this process. **The level (patch / minor / major) is the owner's; ask if it
 was not given.** Run from the repo root on `main`, with `CARGO_TARGET_DIR` on NTFS
 (`local/environment.md`) and the pinned nightly as the default toolchain.

@@ -68,8 +68,8 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
   breaks; no cap, no carry. rsxtk is at `0.5.2` (released by CI 2026-11-12), so consumers' carets treat every minor as
   potentially breaking until `1.0.0`, where its API promise begins. Keep a README Breaking Changes
   table as the migration guide (none exists yet).
-- **A bump is gated** (workspace rule, `../../cmem/layout-and-packaging.md` § "The compatibility
-  gate"): rsxtk's surface is its CLI — flags, positional shapes, exit codes, output a script may
+- **A bump is gated** (workspace rule, `../workspace/cmem/layout-and-packaging.md` § "The
+  compatibility gate"): rsxtk's surface is its CLI — flags, positional shapes, exit codes, output a script may
   parse. **The committed golden `surface.txt`** (every `--help` page, since 2026-11-12) and the
   test suite are the snapshot; `scripts/bump.ts` and `compat.ts --release` diff the golden's
   STRUCTURE against the previous tag's (descriptions do not count) and refuse a level below the
@@ -102,3 +102,24 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
   - the release scripts' throwaway crates never share the repo's target directory
     (best-practices R.5).
   **No backfill** (owner, 2026-11-09: "only new tags will get release pages").
+
+## How the memory is kept (and how its rules changed)
+
+- **2026-09-20** — `cmem/` created by owner direction ("rsxtk should be set up with memory — that
+  project was the first and does not have one"), after the workspace convention then in
+  `memory-conventions.md` and binaryang's cleanup policy (working memory, not an archive; git is
+  the archive). First committed 2026-10-20. The root `CLAUDE.md` became an untracked pointer.
+- **2026-10-22 / 10-23 / 10-26** — the privacy policy and the path test (letters H19, H22), the one
+  email exception and its widening (H28); now `working-rules.md` § Privacy.
+- **2026-11-10** — the owner's "commit" / "push" / "release" written into `INDEX.md` by the
+  workspace on the owner's direction (H34); moved unchanged to `working-rules.md` on 2026-11-19.
+- 🔒 **2026-11-19 — the owner's memory guide** (letter H38, `../workspace/cmem/memory-guide.md`):
+  `STATE.md` added; `INDEX.md` cut from 8.9 KB to a router, its policy, triggers, tooling and owner
+  commands moved to the new `working-rules.md`; the ★ block moved unchanged to
+  `best-practices-shared.md` (owner: keep the copy, in a file of its own); closed open-work items
+  and the record of letters answered moved to `cmem/archive/`; `scripts/check-cmem.ts` copied from
+  the workspace's `tools/`. The workspace memory itself moved to the `workspace` repository beside
+  this one (H42), and its correspondence became one file per item (H41).
+- 🔒 **2026-11-19 — the final review standard** (letter H37): open issues live in the gitignored
+  `cmem/review-issues.md`; the manual privacy `git grep` became the gate `scripts/check-privacy.ts`
+  (adapted from LeptonPad's, which came from binaryang's).
