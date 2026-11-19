@@ -72,7 +72,9 @@ this repo's root to the `workspace` repository beside it.
    ones; diff OUTPUT, not exit codes. `src/main.rs` is 534 lines (2026-10-23): read it whole first.
 3. **Regression gate** — a change to `src/` or `Cargo.toml` runs `cargo build --release`,
    `cargo clippy --all-targets` (0 warnings) and `cargo test` (`tests/cli.rs`), read by OUTPUT;
-   a change to `scripts/` runs `bun test scripts/`; see `testing.md`.
+   a change to `scripts/` runs `bun test scripts/`; a dependency change runs
+   `bun scripts/check-licences.ts` (`--write`, review the diff); see `testing.md`. The gates run
+   only locally — CI runs none (H37 (e)).
 
 ## Tooling (🔒 owner, workspace-wide; `../workspace/cmem/tooling-rules.md`, same numbers)
 

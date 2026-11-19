@@ -19,8 +19,9 @@ the Rust host triple it was built and tested as.
 | linux-arm64 | pending | aarch64-unknown-linux-gnu | — |
 
 - Until 0.5.2, CI's `checks` job ran the gate on GitHub's `ubuntu-latest` (linux-x64). That was CI,
-  not a test machine, and stops when the tests leave CI (open-work 12); linux-x64 stays `pending`
-  until a local run on a named distro.
+  not a test machine; the tests left CI on 2026-11-19 (H37 (e)); linux-x64 stays `pending` until
+  a local run on a named distro. CI still runs `cargo package` there for a release (a build, not
+  a test).
 - A release states one `Tested on: <OS and version> (<platform ID>)` line per platform actually run
   — on the Release page, in its `release.md` entry and in the README — and "other platforms: not
   yet tested" (owner, 2026-11-19). The first release to carry it is the next one.
@@ -48,6 +49,6 @@ the Rust host triple it was built and tested as.
 
 ## Every platform
 
-- The `.cwasm` cache is keyed by OS + arch + hostname (`get_machine_id` in `src/main.rs`), so a
-  cached script built on one platform is rebuilt on another, never run.
+- The script cache is a plain `.wasm` (portable): no `.cwasm`, no machine id, nothing
+  platform-specific in `.tk/` except Cargo's own build output.
 - `csrun` needs the nightly toolchain; the build needs the `wasm32-wasip1` target on every host.

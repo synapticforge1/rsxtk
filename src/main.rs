@@ -69,18 +69,6 @@ enum BuildTarget { Wasi, Wasm, Wat }
 
 struct MyState { wasi: WasiP1Ctx }
 
-fn get_machine_id() -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut s = DefaultHasher::new();
-    std::env::consts::OS.hash(&mut s);
-    std::env::consts::ARCH.hash(&mut s);
-    std::env::var("COMPUTERNAME").unwrap_or_else(|_| 
-        std::env::var("HOSTNAME").unwrap_or_else(|_| "unknown_host".to_string())
-    ).hash(&mut s);
-    format!("{:x}", s.finish())
-}
-
 fn create_engine() -> Result<Engine> {
     let mut config = Config::new();
     config.cranelift_opt_level(OptLevel::Speed);
@@ -210,32 +198,35 @@ fn load_module(engine: &Engine, path: &Path) -> Result<Module> {
     match ext {
         "rs" => {
             let (artifact, _) = build_and_cache_script(engine, path)?;
-            unsafe { Ok(Module::deserialize_file(engine, artifact)?) }
+            Ok(Module::new(engine, &fs::read(artifact)?)?)
         },
         "wat" => {
             let bytes = fs::read(path)?;
             Ok(Module::new(engine, &wat::parse_bytes(&bytes)?)?)
         },
         "wasm" => Ok(Module::new(engine, &fs::read(path)?)?),
-        "cwasm" => unsafe { 
-            Module::deserialize_file(engine, path).map_err(|e| {
-                anyhow!("Machine ID Mismatch or corrupted file: {}\nTry 'rsxtk clean' and re-run.", e)
-            })
-        },
+        // A .cwasm is precompiled native code that the engine would run without validating it,
+        // outside the sandbox. rsxtk never loads one (owner, 2026-11-19).
+        "cwasm" => bail!(
+            "❌ '{}' is a precompiled .cwasm: native code that cannot be checked, so rsxtk does not run it.\n\
+            💡 Run the .wasm, .wat or .rs it was built from instead.",
+            path.display()
+        ),
         _ => bail!("Unsupported file type: {}", ext),
     }
 }
 
 // --- Build & Caching ---
 
-/// Builds a `.rs` script and returns `(cwasm, wasm)` paths. A script without `fn main` is a
-/// library module (`initmod`) and is mirrored as a `cdylib`; otherwise it is a binary.
-/// A `build.rs` and an `rsc/` folder beside the script are mirrored with it.
+/// Builds a `.rs` script and returns `(optimized, wasm)` paths: the walrus-optimized module that
+/// is run (cached as `.tk/<stem>/<stem>.wasm`) and Cargo's own output. A script without `fn main`
+/// is a library module (`initmod`) and is mirrored as a `cdylib`; otherwise it is a binary.
+/// A `build.rs` and an `rsc/` folder beside the script are mirrored with it. The cache is plain
+/// wasm, validated before it is written and again by `Module::new` on every run — never a `.cwasm`.
 fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<(PathBuf, PathBuf)> {
     let stem = script_path.file_stem().unwrap().to_str().unwrap();
     let cache_root = std::env::current_dir()?.join(".tk").join(stem);
-    let cwasm_path = cache_root.join(format!("{}.cwasm", stem));
-    let id_path = cache_root.join("machine.id");
+    let cached_path = cache_root.join(format!("{}.wasm", stem));
 
     let content = fs::read_to_string(script_path)?;
     let parts: Vec<&str> = content.splitn(3, "---").collect();
@@ -263,18 +254,15 @@ fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<(PathBu
     let mirror_build_rs = cache_root.join("build.rs");
     let mirror_rsc = cache_root.join("src/rsc");
 
-    let current_id = get_machine_id();
-
-    if cwasm_path.exists() && id_path.exists() && wasm_output.exists() {
-        let cached_id = fs::read_to_string(&id_path)?;
+    if cached_path.exists() && wasm_output.exists() {
         let src_mtime = newest_mtime(&[script_path, &build_rs, &rsc_dir])?;
-        let cache_mtime = fs::metadata(&cwasm_path)?.modified()?;
+        let cache_mtime = fs::metadata(&cached_path)?.modified()?;
 
         // A build.rs or rsc/ that appeared or vanished since the last build also forces a rebuild.
         let mirror_matches = has_build_rs == mirror_build_rs.exists() && rsc_dir.is_dir() == mirror_rsc.exists();
 
-        if cached_id == current_id && cache_mtime > src_mtime && mirror_matches {
-            return Ok((cwasm_path, wasm_output));
+        if cache_mtime > src_mtime && mirror_matches {
+            return Ok((cached_path, wasm_output));
         }
     }
 
@@ -306,11 +294,14 @@ fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<(PathBu
     let mut module = walrus::Module::from_buffer(&fs::read(&wasm_output)?)?;
     let optimized_wasm = module.emit_wasm();
 
-    let cwasm_bytes = engine.precompile_module(&optimized_wasm)?;
-    fs::write(&cwasm_path, cwasm_bytes)?;
-    fs::write(&id_path, current_id)?;
+    Module::validate(engine, &optimized_wasm)
+        .map_err(|e| anyhow!("The optimized module of '{}' does not validate: {}", script_path.display(), e))?;
+    fs::write(&cached_path, optimized_wasm)?;
+    // Up to 0.5.2 the cache was a precompiled .cwasm plus a machine id; neither is read any more.
+    let _ = fs::remove_file(cache_root.join(format!("{}.cwasm", stem)));
+    let _ = fs::remove_file(cache_root.join("machine.id"));
 
-    Ok((cwasm_path, wasm_output))
+    Ok((cached_path, wasm_output))
 }
 
 /// True when the code defines `fn main` (followed by optional whitespace and `(`).

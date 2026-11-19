@@ -6,7 +6,7 @@ code alone is not evidence), on the tree as it will be committed.
 ## The suite: `cargo test` (tests/cli.rs, 2026-10-23)
 
 ```
-CARGO_TARGET_DIR=<short NTFS dir> cargo test           # 41 pass, 0 ignored (2026-10-23, ~3 s)
+CARGO_TARGET_DIR=<short NTFS dir> cargo test           # 43 pass, 0 ignored (2026-11-19, ~3 s)
 ```
 
 - **End to end, one file.** Each test runs the real binary (`CARGO_BIN_EXE_rsxtk`) in its own
@@ -40,11 +40,19 @@ cargo test
 plus, since 2026-11-12, `bun test scripts/` and `bun scripts/compat.ts surface --check` (a CLI
 change regenerates `surface.txt`: `bun scripts/compat.ts surface`, review the diff, commit it).
 
-**CI repeats it on every push of `main`** (`release.yml` `checks`, `--locked`, on
-`nightly-2026-11-04`, the same nightly as the local run) before anything is tagged. Run
+plus the gates `bun scripts/check-privacy.ts`, `bun scripts/check-licences.ts` (a dependency
+change regenerates `licences.txt` with `--write`: review the diff, commit it) and
+`bun scripts/check-cmem.ts`.
+
+**Every gate runs locally, and only locally** (owner, 2026-11-17, letter H37 (e)): CI no longer
+repeats it; `scripts/release.ts` runs all of it before the push, after the review gate. Until
+0.5.2, CI's `checks` repeated the gate on every push of `main`. Run
 2026-11-12 locally (Windows, nightly 2026-11-04): release build OK, clippy 0 warnings with `-D
 warnings`, 41 pass, 45 script tests pass, `surface.txt` fresh (60 entries). Re-run 2026-11-19
 (Windows 11, win-x64, same nightly): the same, with 57 script tests; release build 3 min 29 s.
+Again after the `.cwasm` removal, from a COLD target dir: release build 3 min 43 s, clippy 0,
+`cargo test` **43** pass (+ `run_cwasm_is_refused`, `run_rs_ignores_an_old_cwasm_cache`, both
+seen to fail against their mutants), 70 script tests, every gate green; 6 min 23 s in all.
 
 Use `CARGO_TARGET_DIR` on NTFS and SHORT: a deep path breaks MinGW `dlltool` in `windows-sys`
 ("Can't open def file"); `%TEMP%\rsxtk-t` works (`local/environment.md`).
@@ -73,7 +81,15 @@ renormalize is refreshed by deleting it and `git checkout -- <file>`.
 
 ## The release scripts: `bun test scripts/` (2026-11-12)
 
-57 tests in 4 files, all pass on Bun 1.4.4 (2026-11-19; 45 in 3 files until the privacy gate's 12):
+70 tests in 6 files, all pass on Bun 1.4.4 (2026-11-19; 45 in 3 files before that day's gates):
+- `check-licences.test.ts` (7) — SPDX OR / AND / precedence / WITH / the legacy `/`, malformed
+  expressions refused, a missing licence, rsxtk's own licence, the inventory's order. **Inverted**:
+  4 mutants (AND read as OR, `/` not OR, trailing tokens ignored, own licence unchecked), each
+  caught; on the real tree, Unicode-3.0 removed from the allowlist → 19 problems, as expected.
+- `review-gate.test.ts` (6) — the `Review complete` bullet (prose with a real commit id is not
+  one); no record, two, an unknown or a non-ancestor commit refuse; anything outside `cmem/`
+  changed since refuses. **Inverted**: 5 mutants, each caught (the fifth only after a test for a
+  commit id in prose was added — the first version of the suite missed it).
 - `check-privacy.test.ts` (12, 2026-11-19) — machine paths (drive, WSL, Git Bash, macOS, Linux;
   the CI runner's home and placeholders pass), token shapes, a URL password, masking, the one
   maintainer address in `Cargo.toml` only, tracked private files, UTF-16 text, arguments. Planted

@@ -105,11 +105,39 @@ fn run_rs_script_builds_and_runs() {
     let out = rsxtk(&dir, &["run", "script.rs"]);
     assert_ok(&out);
     assert_eq!(stdout(&out), "script ran\n");
-    assert!(dir.join(".tk/script/script.cwasm").exists());
+    // The cache is plain wasm, never a precompiled .cwasm.
+    assert!(dir.join(".tk/script/script.wasm").exists());
+    assert!(!dir.join(".tk/script/script.cwasm").exists());
     // Second run comes from the cache and prints the same.
     let again = rsxtk(&dir, &["run", "script.rs"]);
     assert_ok(&again);
     assert_eq!(stdout(&again), "script ran\n");
+}
+
+#[test]
+fn run_cwasm_is_refused() {
+    let dir = workdir("run_cwasm");
+    // Any bytes will do: the file must be refused by its kind, before anything reads it.
+    fs::write(dir.join("hello.cwasm"), b"\x7fELF not really").unwrap();
+    let out = rsxtk(&dir, &["run", "hello.cwasm"]);
+    assert_fails(&out);
+    assert!(stderr(&out).contains("does not run it"), "stderr:\n{}", stderr(&out));
+    assert_eq!(stdout(&out), "");
+}
+
+#[test]
+fn run_rs_ignores_an_old_cwasm_cache() {
+    let dir = workdir("run_rs_old_cache");
+    fs::write(dir.join("script.rs"), SCRIPT).unwrap();
+    // A cache left by 0.5.2 or earlier, newer than the script: it must not be read, and is removed.
+    fs::create_dir_all(dir.join(".tk/script")).unwrap();
+    fs::write(dir.join(".tk/script/script.cwasm"), b"planted").unwrap();
+    fs::write(dir.join(".tk/script/machine.id"), "0").unwrap();
+    let out = rsxtk(&dir, &["run", "script.rs"]);
+    assert_ok(&out);
+    assert_eq!(stdout(&out), "script ran\n");
+    assert!(!dir.join(".tk/script/script.cwasm").exists());
+    assert!(!dir.join(".tk/script/machine.id").exists());
 }
 
 #[test]

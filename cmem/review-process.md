@@ -13,8 +13,10 @@ item lists word for word plus the scope; they are not copied here.
 - Issues: `cmem/review-issues.md` — **gitignored**; the privacy gate refuses it if tracked.
   Each row: an ID (`<class letter><n>`: B, H, L, S, P, E), the platform ID where it is one, the
   finding, the decision (accepted / rejected with its reason), the fix commit.
-- When a re-review comes back empty and the full suite has passed, this file records
-  `Review complete: <commit>` under § Last review; the release tooling reads it (open-work 12).
+- When a re-review comes back empty and the full suite has passed, § Last review records ONE
+  bullet `- Review complete: <commit>` (the reviewed commit; replace the previous one) in a
+  memory-only commit. `scripts/review-gate.ts`, the first step of `release.ts`, refuses a release
+  unless that commit is an ancestor and nothing outside `cmem/` changed since.
 - Reviewer briefs say: work in a folder under the main session's scratchpad, which the main
   session removes at triage (Tooling rule 15); never commit, push or release.
 
@@ -31,24 +33,26 @@ item lists word for word plus the scope; they are not copied here.
   `bun test scripts/` (count in `testing.md`); `surface.txt` fresh; clippy 0 warnings. Any change
   in a count is a finding until explained.
 - **Support matrix and platform notes:** [platforms.md](platforms.md).
-- **Licence inventory and notices:** the project's own licence is `MIT OR Apache-2.0`
-  (`Cargo.toml` `license`, `LICENSE-MIT`, `LICENSE-APACHE`, both shipped in the crate). No
-  inventory of the dependencies exists yet (open-work 13); rsxtk ships SOURCE only, so dependency
-  licences reach users through their own `cargo install`, and no notice file is bundled.
+- **Licence inventory and notices:** `licences.txt` (committed; every package in `Cargo.lock`
+  with its SPDX licence from the package's own `Cargo.toml`), checked by
+  `bun scripts/check-licences.ts` against the allowlist in that script (MIT, Apache-2.0,
+  Apache-2.0 WITH LLVM-exception, BSD-2/3-Clause, ISC, Zlib, Unicode-3.0, Unlicense — exactly
+  those in use, 2026-11-19; 294 packages). rsxtk's own licence is `MIT OR Apache-2.0`
+  (`Cargo.toml`, `LICENSE-MIT`, `LICENSE-APACHE`, both shipped in the crate; the gate checks all
+  three). rsxtk ships SOURCE only: no dependency is bundled, so no third-party notice file ships.
 - **Outputs that can carry user facts:**
-  - `.tk/<stem>/` beside a script: the mirrored script, `build.rs` and `rsc/`, Cargo's build output,
-    the `.cwasm`, and an id file holding a hash of OS + arch + hostname (`get_machine_id`, not the
-    hostname itself);
+  - `.tk/<stem>/` in the current folder: the mirrored script, `build.rs` and `rsc/`, Cargo's build
+    output, and the cached optimized `.wasm` (no machine id since 2026-11-19);
   - error messages, which print the user's paths;
   - network: `add` without a version asks crates.io for the latest (requested by the user; a fixed
     `User-Agent`); nothing else talks to the network. No telemetry.
   - a guest sees only the script's parent folder (the one preopen).
-- **Gate scripts** (run locally; CI only publishes once open-work 12 lands):
-  `cargo build --release --locked`; `cargo clippy --all-targets --locked -- -D warnings`;
-  `cargo test --locked`; `bun test scripts/`; `bun scripts/compat.ts surface --check` and
-  `--release` (API surface + previous tag's tests + `cargo package`); `bun scripts/check-privacy.ts`
-  (privacy and credential scan); `bun scripts/check-cmem.ts`. Missing: a vulnerability check
-  (`cargo audit` is not installed) and the licence inventory (open-work 13).
+- **Gate scripts** (run locally by `scripts/release.ts`, after `scripts/review-gate.ts`; CI only
+  publishes): `cargo build --release --locked`; `cargo clippy --all-targets --locked -- -D
+  warnings`; `cargo test --locked`; `bun test scripts/`; `bun scripts/check-privacy.ts` (privacy
+  and credential scan); `bun scripts/check-licences.ts` (licence inventory); `bun
+  scripts/check-cmem.ts`; `bun scripts/compat.ts --release` (API surface + previous tag's tests +
+  `cargo package`). Missing: a vulnerability check (`cargo audit` is not installed; open-work 14).
 
 ## Items that do not apply, and why
 
@@ -59,11 +63,10 @@ item lists word for word plus the scope; they are not copied here.
 
 ## Where the security review looks first
 
-- `src/main.rs` has two `unsafe` blocks (measured 2026-11-19): `Module::deserialize_file` for the
-  cached `.cwasm` of a `.rs` script and for a `.cwasm` given directly to `run`. A `.cwasm` is
-  precompiled native code that wasmtime trusts without validation, so `run <file>.cwasm` on a file
-  from elsewhere runs native code outside the sandbox. In scope for "untrusted input runs nothing
-  it was not asked to" and "exploitable memory corruption".
+- **Exploitable memory corruption** does not apply to rsxtk's own code: `src/main.rs` has no
+  `unsafe` since 2026-11-19. Until then two blocks deserialized `.cwasm` files (native code run
+  without validation); the owner's rule now is that rsxtk never runs a `.cwasm` — check that no
+  `deserialize*` / `precompile_*` call has come back (`design-decisions.md` § Execution model).
 - A script's `build.rs` runs on the host, unsandboxed, like any Cargo build script (documented in
   the README; `design-decisions.md` § Execution model).
 - **Machine paths in binaries** (privacy): no binary is published; the crate is source.

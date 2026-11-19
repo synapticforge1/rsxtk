@@ -25,21 +25,26 @@ was not given.** Run from the repo root on `main`, with `CARGO_TARGET_DIR` on NT
      read: **the floor tool is the CLI surface** (`surface.txt`, the plan in
      `design-decisions.md` since 2026-09-20). It sees what `--help` shows, not exit codes or
      output formats; the previous tag's tests cover behaviour.
-2. **U4 `bun scripts/release.ts`** — guards: clean tree; on `main`; HEAD = `origin/main` (just
-   fetched) + exactly that bump commit; the tag `rsxtk_vX.Y.Z` absent here and on `origin`;
-   crates.io's version LIST without X.Y.Z (never the version's own URL before it exists). Cold gate
-   = CI's: `cargo build --release --locked`, `cargo clippy --all-targets --locked -- -D
-   warnings`, `cargo test --locked`, `bun test scripts/`, `bun scripts/compat.ts --release`
-   (fresh golden, CLI floor over the previous tag, its tests, `cargo package --locked`). Then ONE
-   `git push origin main` (never forced), read back with `ls-remote`. **It makes no tag, ever.**
-   `--dry-run` stops before the push.
+2. **U4 `bun scripts/release.ts`** — FIRST the review gate (`scripts/review-gate.ts`, H37 (d)):
+   `review-process.md` § Last review records `Review complete: <commit>`, an ancestor of the
+   candidate, with nothing outside `cmem/` changed since — so "review" runs before "release".
+   Then the guards: clean tree; on `main`; HEAD = `origin/main` (just fetched) + exactly that bump
+   commit; the tag `rsxtk_vX.Y.Z` absent here and on `origin`; crates.io's version LIST without
+   X.Y.Z (never the version's own URL before it exists). Cold gate — the ONLY run of the gates
+   (CI only publishes, H37 (e)): `cargo build --release --locked`, `cargo clippy --all-targets
+   --locked -- -D warnings`, `cargo test --locked`, `bun test scripts/`, `check-privacy.ts`,
+   `check-licences.ts`, `check-cmem.ts`, `bun scripts/compat.ts --release` (fresh golden, CLI
+   floor over the previous tag, its tests, `cargo package --locked`). Then ONE `git push origin
+   main` (never forced), read back with `ls-remote`. **It makes no tag, ever.** `--dry-run` stops
+   before the push. The gate runs on win-x64 today; each platform run is a `Tested on:` line.
 3. **CI, `.github/workflows/release.yml`, on that push of `main`** — 🔒 "CI to check first, then
    push the tag, and then create the release page from the tag, then publish the package to the
    registry", in ONE run (a `GITHUB_TOKEN` tag starts no run, so the jobs chain by `needs:`):
-   - **U5 `checks`** {contents: read; credential-less full clone at `github.sha`}: `state` — the
-     version's tag absent → **new**, on this commit → **rerun**, elsewhere → **none** (an ordinary
-     push: the gate still runs, the rest is skipped); release build, clippy `-D warnings`, `cargo
-     test`, `bun test scripts/`, `surface.txt` fresh; for a release `compat.ts --release`.
+   - **U5 `checks`** {contents: read; credential-less clone at `github.sha`}: the version line;
+     `state` — the version's tag absent → **new**, on this commit → **rerun**, elsewhere →
+     **none** (an ordinary push: nothing else runs); for a release, `cargo package --locked` on
+     the pinned nightly — the verify build runs here, with no secret, so `publish` builds nothing
+     (owner's option 1, 2026-11-19). **No tests run on GitHub** (owner, 2026-11-17, H37 (e)).
    - **U6 `tag`** {contents: write; no checkout}: `github-release.ts tag` — the annotated tag
      `rsxtk_vX.Y.Z` on `github.sha` via `git/tags` + `git/refs`, read back; already here = done,
      elsewhere = refused (a published tag never moves).
@@ -52,7 +57,8 @@ was not given.** Run from the repo root on `main`, with `CARGO_TARGET_DIR` on NT
      FATAL: crates.io serves X.Y.Z, not yanked (crates.io keeps no provenance attestation; it does
      record `trustpub_data` — loader-rs measured it on 1.0.5).
    - **U9:** no `uses:`; Rust `nightly-2026-11-04` via the runner's rustup (signed manifests) —
-     the local gate's nightly, move both together; Bun 1.4.4 by version + sha256; top-level
+     the local gate's nightly (the package CI verifies is built by the compiler the tests passed
+     on), move both together; Bun 1.4.4 by version + sha256; top-level
      `permissions: {}`; `concurrency` per commit, never cancelled (a per-tag group cannot exist
      before the tag).
 4. **U10, as a user (by hand, after the run):** `cargo install rsxtk --version X.Y.Z --locked
@@ -98,6 +104,12 @@ re-run finishes it). After the first release publishes through it, delete the Gi
   builds in its own target subdirectory (`compat.ts` `targetDir`); the repo-wide re-run, from a
   fresh clone and a fresh target directory, was green end to end. **Measured on GitHub by 0.5.2**
   (run 43271903460, below).
+- **2026-11-19** — H37 (d) / (e), the final review standard: `release.ts` runs the review gate
+  first and every gate locally (privacy, licences, memory added); `release.yml`'s `checks` lost
+  its build, clippy, tests, surface and compat steps and keeps the version, `state` and, for a
+  release, a credential-less `cargo package --locked` (owner's option 1). Rehearsal: see the
+  commit that landed it; the first run on GitHub is the next push (state none: only the version
+  and `state` steps), and the package step first runs at the next release.
 
 ## Release History
 

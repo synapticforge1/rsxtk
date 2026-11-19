@@ -8,9 +8,9 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/synapticforge1/rsxtk"
 documentation = "https://github.com/synapticforge1/rsxtk"
 readme = "README.md"
-# Project memory, CI, the release scripts and the CLI-surface golden are for working on rsxtk,
-# not for crate users; they stay public on GitHub.
-exclude = ["cmem/", ".github/", "scripts/", "surface.txt"]
+# Project memory, CI, the release scripts, the CLI-surface golden and the licence inventory are for
+# working on rsxtk, not for crate users; they stay public on GitHub.
+exclude = ["cmem/", ".github/", "scripts/", "surface.txt", "licences.txt"]
 keywords = ["rust","wasm", "wasi", "toolkit", "cli"]
 categories = ["development-tools", "wasm"]
 
@@ -34,6 +34,12 @@ walrus = "0.24.4"
 
 # [win-x64] Reqwest: native TLS (uses Windows SChannel — no cmake/NASM required)
 reqwest = { version = "0.13.1", default-features = false, features = ["blocking", "json", "http2", "native-tls"] }
+
+# The dev profile (clippy and `cargo test`) keeps line tables for backtraces but no full debug
+# info: wasmtime and Cranelift's debug info was most of a 4.3 GB target dir (2026-11-19). Only
+# rsxtk's own builds read this; `cargo install` uses the release profile.
+[profile.dev]
+debug = "line-tables-only"
 
 [profile.release]
 opt-level = 3

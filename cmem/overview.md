@@ -18,7 +18,7 @@ commands as 0.4.4);
 
 | command    | args                              | does                                                             |
 | ---------- | --------------------------------- | ---------------------------------------------------------------- |
-| `run`      | `<path>`                          | WASI run of `.rs` (built), `.wasm`, `.wat`, `.cwasm`; tries `_start`, else lists callable exports |
+| `run`      | `<path>`                          | WASI run of `.rs` (built), `.wasm`, `.wat`; `.cwasm` refused; `_start`, else lists exports |
 | `mod`      | `<path> [args…]`                  | call an export of a library module with CLI arguments (`allow_hyphen_values`) |
 | `csrun`    | `<path>`                          | native run via `cargo -Z script` (nightly)                       |
 | `build`    | `<path> <wasi|wasm|wat>`          | build through the virtual Cargo project; `wat` converts the result |
@@ -39,10 +39,11 @@ commands as 0.4.4);
 `include_str!` (2026-10-23).
 
 Engine config (`create_engine`): Cranelift `OptLevel::Speed`, SIMD, bulk memory, multi-memory on.
-⚠️ No wasmtime disk cache is configured (corrected 2026-10-23 — the README and this file used to
-claim one): only `.rs` scripts are cached, as `.tk/<stem>/<stem>.cwasm`, reused while the
-machine id (OS + arch + hostname hash) matches and the `.cwasm` is newer than the script.
-`.wasm` / `.wat` are recompiled by Cranelift on every run.
+No wasmtime disk cache is configured. Only `.rs` scripts are cached, as the optimized
+`.tk/<stem>/<stem>.wasm`, reused while it is newer than the script, `build.rs` and `rsc/`; every
+module is validated and compiled by Cranelift on every run. A `.cwasm` is never run (owner,
+2026-11-19; `design-decisions.md` § Execution model) — until 0.5.2 the cache was a `.cwasm`
+keyed by a machine id.
 
 ## Dependencies (`Cargo.toml`)
 
@@ -122,10 +123,12 @@ rsxtk/
   src/main.rs                   the whole program (534 lines, 2026-10-23)
   tests/cli.rs                  end-to-end `cargo test` suite (41 tests; testing.md)
   surface.txt                   the CLI-surface golden: every --help page (the bump floor)
+  licences.txt                  the dependency licence inventory (check-licences.ts, 2026-11-19)
   scripts/                      Bun (+ *.test.ts): the release tooling — bump, release, compat,
-                                github-release, crates-io (release.md); the gates check-cmem and
-                                check-privacy (working-rules.md, 2026-11-19)
-  .github/workflows/release.yml on a push of main: checks → tag → page → publish (2026-11-12)
+                                github-release, crates-io (release.md); review-gate; the gates
+                                check-cmem, check-privacy, check-licences (2026-11-19)
+  .github/workflows/release.yml on a push of main: checks → tag → page → publish (2026-11-12);
+                                no tests on GitHub since 2026-11-19 (H37 (e))
   README.md  rsxtk_logo.png     public doc
   LICENSE-MIT  LICENSE-APACHE
   .gitattributes                LF everywhere, `*.png` binary (2026-10-26; testing.md § Line endings)

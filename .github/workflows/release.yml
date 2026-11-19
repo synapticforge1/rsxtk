@@ -7,11 +7,13 @@ name: Release
 # `rsxtk_vX.Y.Z` yet ("new"), or has one on this very commit ("rerun": finish what a failed run
 # left). Adapted from universalWasmLoader-rs's publish.yml (its 1.0.5 ran this order, 2026-11-11).
 #
-#   checks  - contents: read, NO secret, a credential-less full clone (tags: the gate compares with
-#             the previous release). The full gate on the pushed commit, the local gate's own
-#             (cmem/testing.md): release build, clippy -D warnings, `cargo test`, the release
-#             scripts' tests, surface.txt fresh; for a release `compat.ts --release` (CLI floor
-#             over the previous tag, its tests against this src/, `cargo package`). All
+#   checks  - contents: read, NO secret, a credential-less clone. 🔒 CI only publishes (owner,
+#             2026-11-17, workspace letter H37 (e): "We want the CI to verify the version, then
+#             tag, create the release page and publish, and skip any version already published"):
+#             every gate and test suite runs LOCALLY, in `scripts/release.ts`, before the push.
+#             Here: the version, "is this a release?", and for a release `cargo package --locked`
+#             — the crate is packaged and its verify build runs HERE, with no secret, so `publish`
+#             builds nothing beside the id-token (owner's choice, 2026-11-19, option 1). All
 #             third-party code runs here, and nowhere else.
 #   tag     - contents: write, NO checkout. CI's annotated tag rsxtk_vX.Y.Z on this commit (REST
 #             API), read back. A GITHUB_TOKEN tag starts no workflow run, so the next jobs run here.
@@ -20,12 +22,12 @@ name: Release
 #             again), crates.io link on top — BEFORE the publish, by the owner's order.
 #   publish - id-token: write + contents: read, LAST. crates.io trusted publishing (owner's D2: no
 #             stored token): skip if crates.io already lists the version; GitHub OIDC -> a
-#             short-lived crates.io token; `cargo publish --no-verify` (no build: `checks` built
-#             and packaged this commit); revoke the token; read back, FATAL.
+#             short-lived crates.io token; `cargo publish --no-verify` (no build: `checks`
+#             packaged and verify-built this commit); revoke the token; read back, FATAL.
 #
 # Every step is `run:`; there is no `uses:`. Pinned: Rust through the runner's rustup (it verifies
-# the signed channel manifest) — the SAME dated nightly the local gate runs on (rsxtk needs nightly
-# for `cargo -Z script`, rustfmt and wasm32-wasip1 for its tests); Bun by version AND sha256 (the
+# the signed channel manifest) — the SAME dated nightly the local gate runs on, so the package CI
+# verifies is built by the compiler the tests passed on; Bun by version AND sha256 (the
 # release's SHASUMS256.txt; move BUN_VERSION and BUN_SHA256 together, Tooling rule 10). Every
 # request has a time limit (best-practices 7.21). A failed job is fixed by "Re-run failed jobs":
 # each job skips what is done; never a new or moved tag (U12).
@@ -59,7 +61,6 @@ jobs:
       state: ${{ steps.state.outputs.state }}
       version: ${{ steps.version.outputs.version }}
     steps:
-      # Full history and tags: the release-mode gate compares with the previous release's tag.
       - name: Checkout (no credentials)
         run: |
           git clone -q --no-checkout "https://github.com/$GITHUB_REPOSITORY" .
@@ -100,35 +101,19 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }} # contents: read — only lifts the API rate limit
         run: bun scripts/github-release.ts state
 
-      - name: Install Rust (pinned nightly, wasm32-wasip1, rustfmt, clippy)
+      # No tests here (H37 (e)): they ran locally in release.ts. Only the package, for a release.
+      - name: Install Rust (pinned nightly)
+        if: steps.state.outputs.state != 'none'
         run: |
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           export PATH="$HOME/.cargo/bin:$PATH"
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal \
-            --component rustfmt --component clippy --target wasm32-wasip1
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
           rustup default "$RUST_TOOLCHAIN"
           cargo --version
 
-      - name: Build (release)
-        run: cargo build --release --locked
-
-      - name: Clippy (0 warnings)
-        run: cargo clippy --all-targets --locked -- -D warnings
-
-      - name: Test (gate)
-        run: cargo test --locked
-
-      - name: Test the release scripts
-        run: bun test scripts/
-
-      - name: The CLI surface golden is fresh
-        run: bun scripts/compat.ts surface --check
-
-      # The release-mode gate on the UNTAGGED candidate: CLI floor over the previous tag, the
-      # previous tag's tests against this src/, `cargo package --locked`.
-      - name: Compatibility gate (release mode)
+      - name: Package the crate (verify build, no secret)
         if: steps.state.outputs.state != 'none'
-        run: bun scripts/compat.ts --release
+        run: cargo package --locked
 
   tag:
     needs: checks

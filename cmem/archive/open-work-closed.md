@@ -24,3 +24,10 @@ Numbers are stable and never reused. Read only when the owner asks about past wo
 
 - **10** — the release workflow's first real run, 0.5.1, all three jobs green
   (`design-decisions.md` § Versioning and release).
+
+## Closed 2026-11-19
+
+- **12** — H37 (d) + (e): `release.ts` runs `review-gate.ts` first and every gate locally;
+  `release.yml` runs no tests, and keeps a credential-less `cargo package --locked` for a
+  release (owner's option 1). `release.md` § How the release path got here.
+- **13** — the licence inventory: `scripts/check-licences.ts` + `licences.txt`.

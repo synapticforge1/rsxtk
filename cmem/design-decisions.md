@@ -14,6 +14,13 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
 - 🔒 **`reqwest` on `native-tls`** (Windows SChannel) for the same reason — no cmake/NASM.
 - 🔒 **`wat` / `wasmprinter` / `walrus` are toolkit scope**, not engine scope; they stay when the
   engine is swapped (wasmrt `cmem/loaders.md`).
+- **`[profile.dev] debug = "line-tables-only"`** (2026-11-19; owner asked "do we need that much
+  for this?" of a 4.3 GB target dir): the debug profile was 3.0 GB of it, mostly full debug info
+  of wasmtime and Cranelift; line tables keep file:line in backtraces. Only rsxtk's own builds
+  (clippy, `cargo test`) read it; `cargo install` uses the release profile.
+- **Every dependency licence is allowlisted** (2026-11-19, `scripts/check-licences.ts`, H37
+  licensing): the allowlist holds exactly the licences in use; a new one fails the gate until it is
+  judged and added here with its reason. `licences.txt` is the committed inventory.
 - `component-model` dropped from rsxtk's own wasmtime features (2026-10-23): rsxtk never used it,
   and the measurement showed it costs nothing to declare or drop — `wasmtime-wasi` (`p2`, implied
   by `p1`) and `wasmtime-wasi-io` turn it on regardless. `cargo tree -e features -i wasmtime`
@@ -25,10 +32,18 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
 - **Nightly toolchain is a prerequisite**: `csrun` uses `cargo -Z script`.
 - **Zero-config WASI sandbox**: the script's parent directory is the only preopen. Widening it is
   a security decision, not a convenience.
-- **`.cwasm` pre-compilation** makes repeated runs of a `.rs` script skip `cargo` and Cranelift;
-  the cache key includes a machine id (OS, arch, hostname). No wasmtime disk cache is configured
-  (corrected 2026-10-23). ⚠️ Under an interpreter engine (wasmrt) `.cwasm`
-  would not be the default — re-decide when the engine changes.
+- 🔒 **rsxtk never runs a `.cwasm`** (owner, 2026-11-19: "do not run .cwasm files"). A `.cwasm`
+  is precompiled native code that wasmtime loads with `unsafe` `Module::deserialize_file` and does
+  not validate, so a file from elsewhere ran native code outside the sandbox. Now `run x.cwasm`
+  (and `mod`, `bench`, `info`, which share `load_module`) refuses by extension before reading the
+  file, and `src/main.rs` has no `unsafe`. Do not reintroduce `deserialize*` or `precompile_*`.
+- **The script cache is plain wasm**: `.tk/<stem>/<stem>.wasm`, walrus-optimized and validated
+  (`Module::validate`) before it is written, then validated and compiled by `Module::new` on each
+  run. Fresh while newer than the script, `build.rs` and `rsc/`. Repeated runs skip `cargo` but
+  not Cranelift (the cost of the rule above). No machine id: a wasm module is portable, so the
+  hostname hash is gone too. A `.cwasm` / `machine.id` left by 0.5.2 or earlier is never read and
+  is deleted at the next build. No wasmtime disk cache is configured (its `cache` feature is off).
+  This is a behaviour break (`run x.cwasm` used to work): the next release is at least a minor.
 - **Smart entry**: `_start` if exported, else list callable exports; `mod` calls one by name.
 - 🔒 **`build.rs` and `rsc/` are mirrored** (owner chose option A, 2026-10-23; the README had
   promised it since 0.4.2, but no version ever did it). From the SCRIPT's folder: `build.rs` →
@@ -93,12 +108,18 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
   CI checks → CI tags `rsxtk_vX.Y.Z` → the Release page from the tag → crates.io through trusted
   publishing; **nobody tags or publishes by hand.** The whole process, the owner items and every
   release: [release.md](release.md). Invariants that must not be silently reverted:
+  - 🔒 **CI only publishes** (owner, 2026-11-17, H37 (e)): every gate and test suite runs
+    locally in `release.ts`, after the review gate (H37 (d)); CI verifies the version, decides
+    "is this a release?", packages the crate (`cargo package --locked`, no secret — owner's
+    option 1, 2026-11-19, so `publish` keeps `--no-verify` and builds nothing beside the
+    id-token), tags, makes the page, publishes, skips a published version, reads back;
   - the tag is CI's, annotated, made only after `checks` is green on that commit, and never moves;
   - every job holds only its own permission (workspace C30): `checks` no secret, `tag` / `release`
     no checkout, `publish` only `id-token: write` + read;
   - no `gh` and no `uses:` (H30); Bun pinned by version + sha256 (Tooling rule 10);
-  - CI's Rust is the local gate's dated nightly (`RUST_TOOLCHAIN`; the CI gate must BE the local
-    gate, ★ 2.4) — rsxtk's tests need nightly (`csrun`), rustfmt (`fmt`) and `wasm32-wasip1`;
+  - CI's Rust is the local gate's dated nightly (`RUST_TOOLCHAIN`), so the package CI verifies is
+    built by the compiler the tests passed on; the tests need nightly (`csrun`), rustfmt (`fmt`)
+    and `wasm32-wasip1`, locally;
   - the release scripts' throwaway crates never share the repo's target directory
     (best-practices R.5).
   **No backfill** (owner, 2026-11-09: "only new tags will get release pages").

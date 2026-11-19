@@ -13,22 +13,29 @@
  * published tag never moves.
  *
  * Guards, each refusing with nothing pushed:
+ *   - FIRST, the review gate (workspace review standard § 9, letter H37 (d); `review-gate.ts`): the
+ *     five required reviews were completed on this code — `cmem/review-process.md` records
+ *     `Review complete: <commit>`, an ancestor, with nothing outside `cmem/` changed since;
  *   - the tree is clean (untracked files count);
  *   - on `main`; HEAD = `origin/main` (just fetched) + exactly one commit, `bump to vX.Y.Z`, that
  *     changes only Cargo.toml and Cargo.lock, and X.Y.Z = Cargo.toml's version;
  *   - the tag `rsxtk_vX.Y.Z` absent here and on `origin`;
  *   - crates.io does not list X.Y.Z — read from the crate's version LIST, never the version's own
  *     URL (a caching registry may cache the miss; loader-go, 2026-11-10);
- *   - the cold gate, CI's own: `cargo build --release --locked`, `cargo clippy --all-targets
- *     --locked -- -D warnings`, `cargo test --locked`, `bun test scripts/`,
- *     `bun scripts/compat.ts --release` (fresh surface.txt, CLI floor, the previous tag's tests,
- *     `cargo package`).
+ *   - the cold gate — the ONLY place the gates run (owner, 2026-11-17: "CI only publishes"):
+ *     `cargo build --release --locked`, `cargo clippy --all-targets --locked -- -D warnings`,
+ *     `cargo test --locked`, `bun test scripts/`, the privacy, licence and memory gates
+ *     (`check-privacy.ts`, `check-licences.ts`, `check-cmem.ts`), and `bun scripts/compat.ts
+ *     --release` (fresh surface.txt, CLI floor, the previous tag's tests, `cargo package`).
  * Then `git push origin main` (never forced) and a read-back: `origin/main` = HEAD, and still no
- * tag on origin. Adapted from universalWasmLoader-rs's release.ts. `node:` builtins and `fetch`.
+ * tag on origin. CI then only verifies the version, packages the crate (no secret), tags, makes
+ * the page and publishes. Adapted from universalWasmLoader-rs's release.ts. `node:` builtins and
+ * `fetch`.
  */
 import { spawnSync } from "node:child_process";
 import process from "node:process";
 import { ROOT, TAG_PREFIX, cargoVersion, releaseGate, run } from "./compat.ts";
+import { check as reviewGate } from "./review-gate.ts";
 
 const CRATE = "rsxtk";
 const UA = "rsxtk release script (https://github.com/synapticforge1/rsxtk)";
@@ -56,6 +63,11 @@ function step(label: string, cmd: string, args: string[]): void {
   const r = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit" });
   if (r.status !== 0) fail(`${label} failed (exit ${r.status})`);
 }
+
+// ── first: the review set was completed on this code ──
+const review = reviewGate(ROOT);
+if (review.refusals.length > 0) fail(`review gate: ${review.refusals.join("; ")}`);
+console.log(`review gate: ${review.candidate} is covered by the review of ${review.reviewed}`);
 
 // ── the tree and the branch ──
 const dirty = git("status", "--porcelain", "--untracked-files=all");
@@ -98,11 +110,14 @@ try {
 if (listed.includes(version)) fail(`crates.io already lists ${CRATE} ${version}`);
 console.log(`guards: clean, main = origin/main + "bump to v${version}", ${tag} absent here and on origin, crates.io without ${version}`);
 
-// ── the cold gate (CI's checks, in CI's order) ──
+// ── the cold gate: every gate, here and nowhere else (CI only publishes) ──
 step("cargo build --release --locked", "cargo", ["build", "--release", "--locked"]);
 step("cargo clippy --all-targets --locked -- -D warnings", "cargo", ["clippy", "--all-targets", "--locked", "--", "-D", "warnings"]);
 step("cargo test --locked", "cargo", ["test", "--locked"]);
 step("bun test scripts/", process.execPath, ["test", "scripts/"]);
+step("bun scripts/check-privacy.ts", process.execPath, ["scripts/check-privacy.ts"]);
+step("bun scripts/check-licences.ts", process.execPath, ["scripts/check-licences.ts"]);
+step("bun scripts/check-cmem.ts", process.execPath, ["scripts/check-cmem.ts"]);
 console.log("== bun scripts/compat.ts --release");
 try {
   for (const line of releaseGate()) console.log(line);

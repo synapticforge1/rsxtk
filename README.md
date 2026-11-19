@@ -31,7 +31,7 @@ rustup target add wasm32-wasip1
 
 ## Features
 
--   **⚡ Compiled-Script Cache**: A `.rs` script is compiled once to a native `.cwasm` artifact for your CPU and reused until the script changes, so repeated runs skip both `cargo` and Cranelift.
+-   **⚡ Script Cache**: A `.rs` script is built once to an optimized `.wasm` and reused until the script changes, so repeated runs skip `cargo`. The cached module is validated on every run.
 -   **📦 Resource Folder (`rsc/`)**: Keep local assets (HTML, CSV, JSON, etc.) in an `rsc/` folder next to your script. Read them at run time through the sandbox, or embed them at compile time with `include_str!("rsc/…")` / `include_bytes!`.
 -   **🔨 build.rs Support**: A `build.rs` next to your script is used as the script's Cargo build script (code generation, `cargo:rustc-env`, and so on).
 -   **🔍 Auto-Dependency Versioning**: Adding a dependency without a version fetches the latest release from crates.io (falls back to `*` if crates.io cannot be reached).
@@ -39,7 +39,7 @@ rustup target add wasm32-wasip1
 - **Smart Entry**: Attempts to run via `_start` (WASI). If missing, automatically lists callable functions.
 - **Library Mode**: Use `mod` to call specific functions with arguments from the CLI.
 - **Rich Metadata**: `info` command provides detailed function signatures (params and return types).
-- **Format Support**: Direct support for `.rs`, `.wasm`, `.wat`, and `.cwasm`.
+- **Format Support**: Direct support for `.rs`, `.wasm` and `.wat`. Precompiled `.cwasm` files are refused: they are native code that cannot be validated, so they would run outside the sandbox.
 - **WAT ⇄ WASM**: `convert` translates between text and binary; `optimize` rewrites a module through Walrus.
 - **Benchmarking**: `bench` runs a module or script N times and reports the average.
 - **Zero-Config WASI**: Scripts are automatically sandboxed to their own parent directory.
@@ -97,7 +97,7 @@ rsxtk csrun my_script.rs
 
 | Command | Usage | Description |
 | :--- | :--- | :--- |
-| `run` | `rsxtk run <file>` | Runs a `.rs`, `.wasm`, `.wat` or `.cwasm` file in the WASI sandbox; without `_start`, lists callable functions. |
+| `run` | `rsxtk run <file>` | Runs a `.rs`, `.wasm` or `.wat` file in the WASI sandbox; without `_start`, lists callable functions. A `.cwasm` is refused. |
 | `mod` | `rsxtk mod <file> [function] [args]...` | Calls an exported function with CLI arguments (`i32`/`i64`/`f32`/`f64`); with no function, shows the module info. |
 | `csrun` | `rsxtk csrun <file>` | Runs file natively via `cargo -Z script`. |
 | `build` | `rsxtk build <file> <target>` | Builds a script to `wasi` or `wasm` (writes `<file>.wasm`), or `wat` (also writes `<file>.wat`). |
@@ -127,7 +127,7 @@ When you run a script, `rsxtk` performs the following steps:
     -   A change to the script, `build.rs` or anything in `rsc/` triggers a rebuild.
 3.  **'run' option**
     - **Compilation**: Invokes `cargo` to target `wasm32-wasip1` (release).
-    - **Optimization**: Passes the result through Walrus, pre-compiles it into a `.cwasm` artifact for your CPU, and caches it. Later runs reuse the `.cwasm` until the script changes or the machine changes, skipping `cargo` and Cranelift entirely.
+    - **Optimization**: Passes the result through Walrus, validates it, and caches it as `.tk/<script>/<script>.wasm`. Later runs reuse it until the script changes, skipping `cargo`; the module is validated and compiled by Cranelift on each run.
     - **Sandboxing**: Runs the artifact in a WASI sandbox with the script's own folder pre-opened as `.` for file access.
 4.  **'csrun' option**: runs the cargo -Z script from the nightly version of rust
 
@@ -176,7 +176,7 @@ Create `hello.wat`:
 ---
 
 ## ⚙️ How it Works
-When you run a `.rs` file, `rsxtk` creates a hidden virtual Cargo project in the `.tk/` directory. It manages dependencies, compiles the script to `wasm32-wasip1`, and then pre-compiles that WASM into a native `.cwasm` file for your specific CPU architecture. 
+When you run a `.rs` file, `rsxtk` creates a hidden virtual Cargo project in the `.tk/` directory. It manages dependencies, compiles the script to `wasm32-wasip1`, optimizes the result and caches it as a plain `.wasm`, which is validated and compiled each time it runs.
 
 ---
 
@@ -196,7 +196,8 @@ A `build.rs` is a normal program that Cargo compiles and runs on your machine du
 * **Clean Cache**: If builds become corrupted, run `rsxtk clean`.
 
 ### 4. Wasmtime Execution Errors
-* **Unsupported ELF Header**: Occurs if a `.wat` file wasn't converted or a `.cwasm` is incompatible. Run `rsxtk clean` and try again.
+* **Unsupported ELF Header**: Occurs if a file is not WebAssembly (for example a `.wat` given a `.wasm` name). Run `rsxtk clean` and try again.
+* **".cwasm … does not run it"**: rsxtk no longer runs precompiled `.cwasm` files (they skip validation). Run the `.wasm`, `.wat` or `.rs` they were made from. A `.tk/` cache from an older rsxtk is rebuilt automatically.
 
 ### 5. Wasmtime Version Compatibility
 
