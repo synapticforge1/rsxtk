@@ -107,9 +107,16 @@ re-run finishes it). After the first release publishes through it, delete the Gi
 - **2026-11-19** — H37 (d) / (e), the final review standard: `release.ts` runs the review gate
   first and every gate locally (privacy, licences, memory added); `release.yml`'s `checks` lost
   its build, clippy, tests, surface and compat steps and keeps the version, `state` and, for a
-  release, a credential-less `cargo package --locked` (owner's option 1). Rehearsal: see the
-  commit that landed it; the first run on GitHub is the next push (state none: only the version
-  and `state` steps), and the package step first runs at the next release.
+  release, a credential-less `cargo package --locked` (owner's option 1). Landed in `ca614b9`.
+  **Rehearsed** in a scratch clone with a scratch bare `origin` (`release.ts --dry-run`), origin
+  untouched each time: no record → refused at the review gate; a record, then `src/main.rs`
+  changed → refused, naming the file; a valid record with `bump to v0.6.0` on top → "HEAD~1 is
+  covered by the review of …", then refused at the NEXT guard (an untracked file) — so the review
+  gate runs first and passes; two records → refused. `release.yml` parsed (Bun's YAML): the
+  four jobs and their permissions unchanged; no build, clippy, test, compat or `uses:` step.
+  **Unmeasured on GitHub**: the next push runs `checks` with state none (version and `state`
+  only); the package step first runs at the next release — the same `cargo package --locked`
+  that `compat.ts --release` runs locally and 0.5.2's CI ran green.
 
 ## Release History
 
