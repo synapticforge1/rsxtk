@@ -31,3 +31,7 @@ Numbers are stable and never reused. Read only when the owner asks about past wo
   `release.yml` runs no tests, and keeps a credential-less `cargo package --locked` for a
   release (owner's option 1). `release.md` § How the release path got here.
 - **13** — the licence inventory: `scripts/check-licences.ts` + `licences.txt`.
+- **14** — the vulnerability check: `cargo-audit` 0.23.0 installed (owner's choice), `cargo audit`
+  in `release.ts`'s gate. First run: 52 advisories; 20 fixed by lockfile-only updates (openssl,
+  rustls, rustls-webpki, bytes, h2, cap-primitives; with anyhow, rand, rustix, tokio flagged
+  unsound); 32 in wasmtime 40 remain → open-work 17.

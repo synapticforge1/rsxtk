@@ -11,6 +11,12 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
   a pure-Rust crypto path exists in that version. The specifier is a caret (`>=40.0.1, <41`), which
   is enough: it admits 40.x patches (`Cargo.lock` holds 40.0.4, 2026-10-23) and never 41/42. It is
   not an exact pin; do not "fix" it to `=40.0.1`.
+  ⚠️ **Re-decide (2026-11-19, open-work 17):** `cargo audit` lists 32 advisories in wasmtime
+  40.0.4 (24) and wasmtime-wasi 40.0.4 (8) — the sandbox itself — and the 40 line has NO patched
+  release (fixed in wasmtime ≥ 42.0.2 / 43.0.1, wasmtime-wasi ≥ 44.0.2 / 45). And the pin's reason
+  may be gone: the same day, `cargo install cargo-audit` compiled `aws-lc-sys` 0.45.0 on this
+  machine, which has neither cmake nor NASM. Measure whether wasmtime 45's tree builds here before
+  deciding.
 - 🔒 **`reqwest` on `native-tls`** (Windows SChannel) for the same reason — no cmake/NASM.
 - 🔒 **`wat` / `wasmprinter` / `walrus` are toolkit scope**, not engine scope; they stay when the
   engine is swapped (wasmrt `cmem/loaders.md`).

@@ -37,7 +37,7 @@ item lists word for word plus the scope; they are not copied here.
   with its SPDX licence from the package's own `Cargo.toml`), checked by
   `bun scripts/check-licences.ts` against the allowlist in that script (MIT, Apache-2.0,
   Apache-2.0 WITH LLVM-exception, BSD-2/3-Clause, ISC, Zlib, Unicode-3.0, Unlicense — exactly
-  those in use, 2026-11-19; 294 packages). rsxtk's own licence is `MIT OR Apache-2.0`
+  those in use, 2026-11-19; 284 packages after that day's security updates). rsxtk's own licence is `MIT OR Apache-2.0`
   (`Cargo.toml`, `LICENSE-MIT`, `LICENSE-APACHE`, both shipped in the crate; the gate checks all
   three). rsxtk ships SOURCE only: no dependency is bundled, so no third-party notice file ships.
 - **Outputs that can carry user facts:**
@@ -51,8 +51,9 @@ item lists word for word plus the scope; they are not copied here.
   publishes): `cargo build --release --locked`; `cargo clippy --all-targets --locked -- -D
   warnings`; `cargo test --locked`; `bun test scripts/`; `bun scripts/check-privacy.ts` (privacy
   and credential scan); `bun scripts/check-licences.ts` (licence inventory); `bun
-  scripts/check-cmem.ts`; `bun scripts/compat.ts --release` (API surface + previous tag's tests +
-  `cargo package`). Missing: a vulnerability check (`cargo audit` is not installed; open-work 14).
+  scripts/check-cmem.ts`; `cargo audit` (known vulnerabilities, RustSec; `cargo-audit` installed
+  2026-11-19 — fails today on wasmtime 40, open-work 17); `bun scripts/compat.ts --release` (API
+  surface + previous tag's tests + `cargo package`).
 
 ## Items that do not apply, and why
 

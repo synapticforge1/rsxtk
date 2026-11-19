@@ -24,8 +24,8 @@
  *     URL (a caching registry may cache the miss; loader-go, 2026-11-10);
  *   - the cold gate — the ONLY place the gates run (owner, 2026-11-17: "CI only publishes"):
  *     `cargo build --release --locked`, `cargo clippy --all-targets --locked -- -D warnings`,
- *     `cargo test --locked`, `bun test scripts/`, the privacy, licence and memory gates
- *     (`check-privacy.ts`, `check-licences.ts`, `check-cmem.ts`), and `bun scripts/compat.ts
+ *     `cargo test --locked`, `bun test scripts/`, the privacy, licence, vulnerability and memory
+ *     gates (`check-privacy.ts`, `check-licences.ts`, `cargo audit`, `check-cmem.ts`), and `bun scripts/compat.ts
  *     --release` (fresh surface.txt, CLI floor, the previous tag's tests, `cargo package`).
  * Then `git push origin main` (never forced) and a read-back: `origin/main` = HEAD, and still no
  * tag on origin. CI then only verifies the version, packages the crate (no secret), tags, makes
@@ -117,6 +117,9 @@ step("cargo test --locked", "cargo", ["test", "--locked"]);
 step("bun test scripts/", process.execPath, ["test", "scripts/"]);
 step("bun scripts/check-privacy.ts", process.execPath, ["scripts/check-privacy.ts"]);
 step("bun scripts/check-licences.ts", process.execPath, ["scripts/check-licences.ts"]);
+// Known vulnerabilities in Cargo.lock (RustSec advisory database; `cargo install cargo-audit`, a
+// prerequisite since 2026-11-19, open-work 14). Warnings (unmaintained, unsound) print, not fail.
+step("cargo audit", "cargo", ["audit"]);
 step("bun scripts/check-cmem.ts", process.execPath, ["scripts/check-cmem.ts"]);
 console.log("== bun scripts/compat.ts --release");
 try {

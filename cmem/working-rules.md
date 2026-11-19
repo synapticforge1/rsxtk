@@ -11,7 +11,9 @@ this repo's root to the `workspace` repository beside it.
   the items addressed to rsxtk in `../workspace/cmem/letters/<ID>.md`; then the topic files that
   `STATE.md` § Read next or the task names.
 - **End:** rewrite `STATE.md`; move every item closed this session to `cmem/archive/`; record new
-  decisions in `design-decisions.md` and rules here; empty the scratchpad (§ Scratch); run
+  decisions in `design-decisions.md` and rules here; empty the scratchpad (§ Scratch); delete the
+  Cargo target dir and the test folders after the session's last gate run (owner, 2026-11-19:
+  cleared each session; a cold gate rebuilds them in about 6 minutes); run
   `bun scripts/check-cmem.ts` and fix what it reports.
 - **A sub-agent** gets the exact files the main agent picked from the index; a reviewer gets its
   brief and `STATE.md` and does not browse `cmem/`.
@@ -120,7 +122,8 @@ this repo's root to the `workspace` repository beside it.
 - The repo is on an exFAT drive: `git` needs `safe.directory` for this path, and
   `CARGO_TARGET_DIR` points at a SHORT NTFS folder (a deep one breaks MinGW `dlltool`).
 - The nightly toolchain and the `wasm32-wasip1` target are prerequisites (`csrun` needs `-Z
-  script`); the wasmtime 40.x pin and why: `design-decisions.md`.
+  script`), and `cargo-audit` for the release gate (`cargo install cargo-audit --locked`); the
+  wasmtime 40.x pin and why: `design-decisions.md`.
 
 ## Owner commands (🔒 owner, 2026-11-10, letter H34; review words 2026-11-17, letter H37)
 

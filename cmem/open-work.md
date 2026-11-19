@@ -11,9 +11,12 @@ reused; closed items are in [archive/open-work-closed.md](archive/open-work-clos
   publishing is registered and MEASURED (0.5.2's `trustpub_data`, `release.md`), so nothing uses
   the repo secret `CARGO_REGISTRY_TOKEN` any more: delete it (GitHub → Settings → Secrets and
   variables → Actions) and revoke that API token on crates.io.
-- **14. A vulnerability check** (H37 security review, added 2026-11-19): the standard lists "known
-  vulnerabilities" among the gates; `cargo audit` is not installed. Options to decide: install
-  `cargo-audit`, or a Bun gate that asks the OSV database for every `Cargo.lock` package.
+- **17. 🗓️ OWNER — wasmtime 40 has 32 unpatched advisories** (added 2026-11-19): `cargo audit`
+  (now a release gate) fails on wasmtime 40.0.4 (24) and wasmtime-wasi 40.0.4 (8); no 40.x fix
+  exists, so **no release passes the gate until wasmtime moves** to ≥ 43.0.1 (wasmtime-wasi ≥ 45).
+  The pin's reason (aws-lc-sys needs cmake + NASM) may be gone — `design-decisions.md` § Engine.
+  Work: measure the build, port the API changes from 40, `cargo test` unchanged as referee. Or the
+  wasmrt switch (item 3) replaces both crates.
 - **15. The next release is at least a MINOR** (added 2026-11-19): `run x.cwasm` stopped working
   (owner: rsxtk never runs a `.cwasm`), a behaviour break `surface.txt` cannot see (`--help` is
   unchanged). `bump.ts` would allow a patch: choose `minor` (0.6.0). The README notes it.
