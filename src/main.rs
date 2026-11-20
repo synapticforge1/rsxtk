@@ -405,19 +405,37 @@ fn stem_file_name(path: &Path) -> String {
 /// are allowed — refusing them would break names that work.
 fn check_script_name(stem: &str) -> Result<()> {
     const CARGO_RESERVED: &[&str] = &["build", "deps", "examples", "incremental"];
+    // [win-x64, win-arm64] Device names are not files (measured: `init nul` then `run nul.rs` failed
+    // with "os error 3"); refused on Windows, where they bite.
+    const WINDOWS_DEVICES: &[&str] = &[
+        "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
+        "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+    ];
+    // Compared without case: on Windows and macOS `Build.rs` IS `build.rs` (re-review 2: `init
+    // Build` passed and the file was then taken as a build script).
+    let is = |list: &[&str]| list.iter().any(|r| r.eq_ignore_ascii_case(stem));
     let why = if !stem.starts_with(|c: char| c.is_alphabetic() || c == '_') {
         Some("it must start with a letter or '_'")
     } else if !stem.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
         Some("it may hold only letters, digits, '-' and '_'")
-    } else if CARGO_RESERVED.contains(&stem) {
+    } else if is(CARGO_RESERVED) {
         Some("Cargo reserves it for its build folders")
+    } else if cfg!(windows) && is(WINDOWS_DEVICES) {
+        Some("Windows keeps it as a device name")
     } else {
         None
     };
     match why {
-        Some(why) => bail!("❌ '{}' cannot be a script name: rsxtk builds the script as a Cargo package named after the file, and {}. Rename it (for example 'my_{}.rs').", stem, why, stem.trim_start_matches(|c: char| !c.is_alphanumeric())),
+        Some(why) => bail!("❌ '{}' cannot be a script name: rsxtk builds the script as a Cargo package named after the file, and {}. Rename it (for example '{}.rs').", stem, why, suggest_script_name(stem)),
         None => Ok(()),
     }
+}
+
+/// A valid name close to `stem`, for the refusal's hint: other characters become `_`, and `my_`
+/// goes in front (which also clears a reserved or device name).
+fn suggest_script_name(stem: &str) -> String {
+    let body: String = stem.chars().map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' }).collect();
+    format!("my_{}", body.trim_start_matches(['_', '-']))
 }
 
 /// A lock on one script's build cache for as long as the returned file lives: a second `run`,
@@ -468,19 +486,29 @@ fn split_manifest(content: &str) -> Result<Option<(String, String)>> {
     Ok(None)
 }
 
-/// Writes `bytes` to `path` through a temporary file beside it and a rename, so an interrupted or
-/// failed write never leaves a half-written file, and readers see the old or the new file whole.
-/// An existing file keeps its permissions (an executable script stays executable), and a symlink
-/// is written THROUGH to its target, so the link stays a link (review 2, U1: both were lost).
-fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+/// Rewrites the user's own script in place (`add`, `remove`, `fmt`): a symlinked script is written
+/// THROUGH to its target, so the link stays a link (review 2, U1). Only for a file the user named
+/// to be edited — every other output goes through `write_atomic`, which never follows a link.
+fn rewrite_script(path: &Path, bytes: &[u8]) -> Result<()> {
     let target = match fs::symlink_metadata(path) {
         Ok(m) if m.file_type().is_symlink() => fs::canonicalize(path)
             .map_err(|e| anyhow!("could not follow the link '{}': {}", path.display(), e))?,
         _ => path.to_path_buf(),
     };
+    write_atomic(&target, bytes)
+}
+
+/// Writes `bytes` to `path` through a temporary file beside it and a rename, so an interrupted or
+/// failed write never leaves a half-written file, and readers see the old or the new file whole.
+/// An existing file keeps its permissions (an executable script stays executable; review 2, U1).
+/// A symlink AT `path` is replaced, never followed: a link planted at an output name (the `.tk`
+/// cache, `build`'s or `convert`'s output) cannot redirect the write elsewhere (re-review 2).
+fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    let target = path.to_path_buf();
     let name = target.file_name().ok_or_else(|| anyhow!("'{}' has no file name", target.display()))?;
     let tmp = target.with_file_name(format!(".{}.rsxtk-{}.tmp", name.to_string_lossy(), std::process::id()));
-    let perms = fs::metadata(&target).ok().map(|m| m.permissions());
+    // Permissions of an existing REGULAR file only (symlink_metadata: a link's target is not read).
+    let perms = fs::symlink_metadata(&target).ok().filter(|m| m.is_file()).map(|m| m.permissions());
     let written = fs::write(&tmp, bytes)
         .and_then(|_| match perms { Some(p) => fs::set_permissions(&tmp, p), None => Ok(()) })
         .and_then(|_| fs::rename(&tmp, &target));
@@ -713,7 +741,7 @@ fn edit_deps(path: &Path, crate_name: &str, version: Option<&str>) -> Result<()>
         println!("ℹ️ '{}' is not in the [dependencies] of {}; nothing changed.", crate_name, path.display());
         return Ok(());
     }
-    write_atomic(path, format!("---\n{}\n---\n{}", edited.trim(), code.trim_start()).as_bytes())?;
+    rewrite_script(path, format!("---\n{}\n---\n{}", edited.trim(), code.trim_start()).as_bytes())?;
     println!("✅ Manifest updated in {}", path.display());
     Ok(())
 }
@@ -927,24 +955,34 @@ fn check_version(version: &str) -> Result<()> {
 }
 
 /// A Cargo version requirement (review 2, C3: `add x banana` wrote `x = "banana"` and said
-/// success): `*`, or comma-separated comparators — an optional `^ ~ = > >= < <=`, then
-/// MAJOR[.MINOR[.PATCH]] where MINOR / PATCH may be `*` / `x`, an optional `-pre` and `+build`.
+/// success), as Cargo's parser takes it (checked against `cargo metadata`, re-review 2): `*` / `x` /
+/// `X` alone, or comma-separated comparators — an optional `^ ~ = > >= < <=`, then
+/// MAJOR[.MINOR[.PATCH]] with no leading zeros, where a wildcard (`*` / `x` / `X`) may replace the
+/// parts after MAJOR but is never followed by a number, and an optional `-pre` / `+build` only on
+/// a version without a wildcard (a numeric `pre` identifier has no leading zero).
 fn is_version_req(req: &str) -> bool {
     fn comparator(c: &str) -> bool {
         let c = c.trim();
-        if c == "*" { return true; }
+        if matches!(c, "*" | "x" | "X") { return true; }
         let c = [">=", "<=", "^", "~", "=", ">", "<"].iter()
             .find_map(|op| c.strip_prefix(op)).unwrap_or(c).trim_start();
         let (core, rest) = c.split_at(c.find(['-', '+']).unwrap_or(c.len()));
-        let label_ok = |s: &str| !s.is_empty() && s.split('.').all(|p| !p.is_empty() && p.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-'));
-        let tail_ok = match rest.split_once('+') {
-            Some((pre, build)) => (pre.is_empty() || pre.strip_prefix('-').is_some_and(label_ok)) && label_ok(build),
-            None => rest.is_empty() || rest.strip_prefix('-').is_some_and(label_ok),
-        };
+        let ident_ok = |p: &str| !p.is_empty() && p.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-');
+        let no_leading_zero = |p: &str| !(p.len() > 1 && p.starts_with('0') && p.chars().all(|ch| ch.is_ascii_digit()));
+        let pre_ok = |s: &str| !s.is_empty() && s.split('.').all(|p| ident_ok(p) && no_leading_zero(p));
+        let build_ok = |s: &str| !s.is_empty() && s.split('.').all(ident_ok);
+        let (pre, build) = match rest.split_once('+') { Some((p, b)) => (p, Some(b)), None => (rest, None) };
+        let tail_ok = (pre.is_empty() || pre.strip_prefix('-').is_some_and(pre_ok)) && build.is_none_or(build_ok);
         let parts: Vec<&str> = core.split('.').collect();
-        let numeric = |p: &str| !p.is_empty() && p.chars().all(|ch| ch.is_ascii_digit());
-        tail_ok && (1..=3).contains(&parts.len()) && numeric(parts[0])
-            && parts[1..].iter().all(|p| numeric(p) || matches!(*p, "*" | "x" | "X"))
+        let number = |p: &str| !p.is_empty() && p.chars().all(|ch| ch.is_ascii_digit()) && no_leading_zero(p);
+        let wild = |p: &str| matches!(p, "*" | "x" | "X");
+        let first_wild = parts.iter().position(|p| wild(p)).unwrap_or(parts.len());
+        (1..=3).contains(&parts.len())
+            && number(parts[0])
+            && parts[1..first_wild].iter().all(|p| number(p))
+            && parts[first_wild..].iter().all(|p| wild(p))
+            && tail_ok
+            && (rest.is_empty() || first_wild == parts.len())
     }
     !req.trim().is_empty() && !req.chars().any(|c| c == '"' || c == '\\' || c.is_control())
         && req.split(',').all(comparator)
@@ -1026,7 +1064,7 @@ fn format_script(path: &Path) -> Result<()> {
     };
     let formatted = rustfmt(&code)
         .map_err(|e| anyhow!("{}\n'{}' is unchanged.", e, path.display()))?;
-    write_atomic(path, format!("---\n{}\n---\n{}", manifest.trim(), formatted).as_bytes())?;
+    rewrite_script(path, format!("---\n{}\n---\n{}", manifest.trim(), formatted).as_bytes())?;
     println!("✨ Formatted {}", path.display());
     Ok(())
 }

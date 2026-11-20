@@ -569,7 +569,11 @@ fn a_library_whose_comment_mentions_fn_main_is_still_a_library() {
 fn script_names_cargo_cannot_build_are_refused_by_init_and_run() {
     // C2: `init 2fib` succeeded and `run` then failed inside Cargo with a raw error.
     let dir = workdir("r2_c2_names");
-    for name in ["2fib", "my.script", "build", "deps"] {
+    // Re-review 2: reserved names in any case (`Build.rs` IS `build.rs` on Windows / macOS), and
+    // on Windows the device names (`nul`).
+    let mut refused = vec!["2fib", "my.script", "build", "deps", "Build", "EXAMPLES"];
+    if cfg!(windows) { refused.extend(["nul", "CON", "com1"]); }
+    for name in refused {
         let out = rsxtk(&dir, &["init", name]);
         assert_fails(&out);
         assert!(stderr(&out).contains("cannot be a script name"), "{}: {}", name, stderr(&out));
@@ -579,6 +583,10 @@ fn script_names_cargo_cannot_build_are_refused_by_init_and_run() {
     let run = rsxtk(&dir, &["run", "2fib.rs"]);
     assert_fails(&run);
     assert!(stderr(&run).contains("cannot be a script name"), "{}", stderr(&run));
+    // The hint is itself a valid name (it was `my_my.script.rs`).
+    let hint = rsxtk(&dir, &["init", "my.script"]);
+    assert!(stderr(&hint).contains("'my_my_script.rs'"), "{}", stderr(&hint));
+    assert_ok(&rsxtk(&dir, &["init", "my_my_script"]));
     // Names Cargo builds stay allowed — Rust keywords among them (measured: `fn`, `try` build).
     for ok in ["my-tool", "fn", "try", "_x"] { assert_ok(&rsxtk(&dir, &["init", ok])); }
 }
@@ -588,13 +596,15 @@ fn add_accepts_only_cargo_version_requirements() {
     // C3: `add x banana` wrote `x = "banana"` and reported success.
     let dir = workdir("r2_c3_versions");
     fs::write(dir.join("s.rs"), SCRIPT).unwrap();
-    for bad in ["banana", "1.0 foo", "1..2", "v1", ">=", "1.2.3.4", "1.0-", "1.0+"] {
+    // Re-review 2: checked against Cargo's own parser — it also refuses a number after a wildcard,
+    // a pre-release on a wildcard, and leading zeros.
+    for bad in ["banana", "1.0 foo", "1..2", "v1", ">=", "1.2.3.4", "1.0-", "1.0+", "1.*.3", "1.2.x-rc", "1.0.0-01", "01.2"] {
         let out = rsxtk(&dir, &["add", "s.rs", "itoa", bad]);
         assert_fails(&out);
         assert!(stderr(&out).contains("not a valid version requirement"), "{}: {}", bad, stderr(&out));
     }
     assert_eq!(fs::read_to_string(dir.join("s.rs")).unwrap(), SCRIPT);
-    for good in ["1", "1.2", "^1.2.3", "~0.4", ">=1, <2", "*", "1.*", "=1.0.0-alpha.1", "1.0.0+build.5"] {
+    for good in ["1", "1.2", "^1.2.3", "~0.4", ">=1, <2", "*", "x", "X", "1.*", "1.2.x", "=1.0.0-alpha.1", "1.0.0+build.5", "1.0.0-rc.0"] {
         assert_ok(&rsxtk(&dir, &["add", "s.rs", "itoa", good]));
         assert!(fs::read_to_string(dir.join("s.rs")).unwrap().contains(&format!("itoa = \"{}\"", good)), "{}", good);
     }
@@ -692,6 +702,21 @@ fn add_keeps_the_scripts_mode_and_its_symlink() {
     assert!(fs::symlink_metadata(dir.join("link.rs")).unwrap().file_type().is_symlink(), "the link became a file");
     assert!(fs::read_to_string(dir.join("real.rs")).unwrap().contains("itoa = \"1\""));
     assert_eq!(fs::metadata(dir.join("real.rs")).unwrap().permissions().mode() & 0o777, 0o755);
+}
+
+/// [linux-x64, linux-arm64] A symlink planted at an OUTPUT name is replaced, never followed: a
+/// `convert -o` onto a link must not overwrite the link's target (re-review 2: write-through for
+/// every output was a containment regression; only add / remove / fmt follow a link).
+#[cfg(target_os = "linux")]
+#[test]
+fn an_output_symlink_is_replaced_not_followed() {
+    let dir = workdir("r2_output_link");
+    fs::write(dir.join("lib.wat"), LIB_WAT).unwrap();
+    fs::write(dir.join("victim.txt"), "keep me").unwrap();
+    std::os::unix::fs::symlink("victim.txt", dir.join("out.wasm")).unwrap();
+    assert_ok(&rsxtk(&dir, &["convert", "lib.wat", "-o", "out.wasm"]));
+    assert_eq!(fs::read_to_string(dir.join("victim.txt")).unwrap(), "keep me");
+    assert!(!fs::symlink_metadata(dir.join("out.wasm")).unwrap().file_type().is_symlink(), "the link was followed");
 }
 
 /// [linux-x64, linux-arm64] A script name that is not UTF-8 is a named error, not a panic (U2).
