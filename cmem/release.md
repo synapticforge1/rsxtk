@@ -125,9 +125,41 @@ re-run finishes it). After the first release publishes through it, delete the Gi
 
 ## Release History
 
-Every version on crates.io, newest first (38 versions, 14 not yanked — crates.io API,
-2026-11-20, after 1.0.0). Before 0.5.0 the repo kept no memory and its commit messages say
+Every version on crates.io, newest first (39 versions, 15 not yanked — crates.io API,
+2026-11-20, after 1.0.1). Before 0.5.0 the repo kept no memory and its commit messages say
 "update"; those entries hold what is known and say so.
+
+### 1.0.1 — 2026-11-20 (patch) — full review 2 and the open items
+
+**Tested on: Windows 11 (win-x64)** · **Tested on: Ubuntu 26.04 LTS under WSL 2 (linux-x64)** ·
+Other platforms: not yet tested. Platforms verified at cb2a6e7: win-x64 (`cargo test` 89, bun 79,
+clippy 0, every gate; again by `release.ts` at 32bcedb with `cargo audit` 0 vulnerabilities, 1
+allowed warning: pin-utils unmaintained); linux-x64 (Ubuntu 26.04.1, WSL 2: `cargo test` 96 incl. the
+linux-only tests, bun 79, clippy 0, every gate). Symlink tests run on Windows too (Developer Mode).
+
+**What changed (for users):** a library whose comment mentions `fn main` is a library; script names
+are what Cargo builds (only `nul` refused among Windows device names — con, prn, … ran under 1.0.0);
+`add` accepts exactly Cargo's version requirements; parallel runs of one script wait for its build;
+`fmt` stops rustfmt after 2 minutes; a guest's exit is handled alike in `run` and `mod`; `.wat` with
+a BOM runs; outputs never follow a symlink (temp files exclusive); a symlinked script or module is
+rewritten through its link; `.tk` checks (links inside refused; another user's or a world-writable
+`.tk` refused; each script's cache 0700, an open one rebuilt, fail closed); the Linux lock folder is
+per-user with no HOME; README Install (`--locked`), the Breaking Changes table for 1.0.0, the
+shared-folder limit. Release path: the crates.io read-back compares the checksum. The CLI floor over
+1.0.0 is patch and 1.0.0's 75 tests pass unchanged.
+**How (owner: "do a full review one more time before releasing", "scope the open items and fix them
+before the release"; level patch):** review complete at cb2a6e7 (`review-process.md`); record
+`759f316`. The first `release.ts` refused (main 16 ahead of origin/main, nothing pushed), so
+`759f316` was pushed first (run 44812729588, non-release, green), then `bump.ts patch` → `32bcedb`
+(the first bump attempt failed only because CARGO_TARGET_DIR was unset: `target/` on exFAT) and
+`release.ts` pushed `main` = `32bcedb`, no tag. **Run 44813275188**, every job green, first attempt:
+tag `rsxtk_v1.0.1` (object `1fb44ac`, `github-actions[bot]`, 20:40:45Z, → `32bcedb`); page "rsxtk
+1.0.1", not a draft, Tested on lines first; publish with the checksum read-back.
+**Read back:** crates.io 1.0.1 created 20:41:15Z, not yanked, `MIT OR Apache-2.0`, 824,810 bytes,
+checksum `9a835389…6d96` = the local `cargo package` output; **`trustpub_data` = {github,
+synapticforge1/rsxtk, run 44813275188, sha `32bcedb`}**.
+**As a user (U10):** `cargo install rsxtk --version =1.0.1 --locked` into a scratch root (391 s) →
+`rsxtk 1.0.1`; `run hello.wat` printed "hello from 1.0.1", exit 0; `add s.rs itoa 1-rc` refused, exit 1.
 
 ### 1.0.0 — 2026-11-20 (major) — the first release under the final review standard
 
