@@ -38,7 +38,7 @@ the Rust host triple it was built and tested as.
 ## win-x64
 
 - **TLS:** `reqwest` uses `native-tls`, which is SChannel here (`Cargo.toml`, the comment tagged
-  `[win-x64]`): no cmake or NASM, which this machine lacks. On Linux the same feature is OpenSSL and
+  `[win-x64]`): no cmake or NASM (rsxtk's rule: no C library in its build). On Linux the same feature is OpenSSL and
   needs its development headers to build; on macOS, Security.framework.
 - **Toolchain:** the GNU host (MinGW `dlltool`); `CARGO_TARGET_DIR` must be SHORT — a deep path
   breaks `dlltool` in `windows-sys` ("Can't open def file") (`testing.md`).

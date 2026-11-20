@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use reqwest::header::USER_AGENT;
 use serde_json::Value;
 use wasmtime::{Engine, Linker, Module, Store, Val, Config, OptLevel};
-use wasmtime_wasi::WasiCtxBuilder;
+use wasmtime_wasi::{FsPerms, WasiCtxBuilder};
 use wasmtime_wasi::p1::{self, WasiP1Ctx};
 
 #[derive(Parser)]
@@ -75,7 +75,7 @@ fn create_engine() -> Result<Engine> {
     config.wasm_simd(true);
     config.wasm_bulk_memory(true);
     config.wasm_multi_memory(true);
-    Engine::new(&config)
+    Ok(Engine::new(&config)?)
 }
 
 fn main() -> Result<()> {
@@ -130,8 +130,8 @@ fn run_wasm_mod(engine: &Engine, path: &Path, args: Vec<String>) -> Result<()> {
 
     let mut builder = WasiCtxBuilder::new();
     builder.inherit_stdio().inherit_args();
-    builder.preopened_dir(abs_path.parent().unwrap(), ".", wasmtime_wasi::DirPerms::all(), wasmtime_wasi::FilePerms::all())?;
-    
+    builder.preopened_dir(abs_path.parent().unwrap(), ".", FsPerms::ReadWrite)?;
+
     let mut store = Store::new(engine, MyState { wasi: builder.build_p1() });
     let instance = linker.instantiate(&mut store, &module)?;
 
@@ -173,17 +173,17 @@ fn execute_module(engine: &Engine, module: Module, abs_path: &Path) -> Result<()
 
     let mut builder = WasiCtxBuilder::new();
     builder.inherit_stdio().inherit_args();
-    builder.preopened_dir(abs_path.parent().unwrap(), ".", wasmtime_wasi::DirPerms::all(), wasmtime_wasi::FilePerms::all())?;
-    
+    builder.preopened_dir(abs_path.parent().unwrap(), ".", FsPerms::ReadWrite)?;
+
     let mut store = Store::new(engine, MyState { wasi: builder.build_p1() });
     let instance = linker.instantiate(&mut store, &module)?;
-    
+
     if let Some(func) = instance.get_func(&mut store, "_start") {
         if let Err(e) = func.call(&mut store, &[], &mut []) {
             match e.downcast::<wasmtime_wasi::I32Exit>() {
                 Ok(status) if status.0 == 0 => (),
                 Ok(status) => bail!("Exited status: {}", status.0),
-                Err(e) => return Err(e),
+                Err(e) => return Err(e.into()),
             }
         }
     } else {

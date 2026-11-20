@@ -53,6 +53,9 @@ warnings`, 41 pass, 45 script tests pass, `surface.txt` fresh (60 entries). Re-r
 Again after the `.cwasm` removal, from a COLD target dir: release build 3 min 43 s, clippy 0,
 `cargo test` **43** pass (+ `run_cwasm_is_refused`, `run_rs_ignores_an_old_cwasm_cache`, both
 seen to fail against their mutants), 70 script tests, every gate green; 6 min 23 s in all.
+2026-11-20, on **wasmtime 50.0.3**: `cargo test` 43/43 UNCHANGED (the engine-agnostic suite as
+referee, as planned for item 3), clippy 0, release build 4 min 00 s, `surface.txt` fresh, 70
+script tests, `cargo audit` 0 vulnerabilities, licences 269 packages allowed.
 
 Use `CARGO_TARGET_DIR` on NTFS and SHORT: a deep path breaks MinGW `dlltool` in `windows-sys`
 ("Can't open def file"); `%TEMP%\rsxtk-t` works (`local/environment.md`).

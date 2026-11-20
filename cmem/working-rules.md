@@ -122,8 +122,10 @@ this repo's root to the `workspace` repository beside it.
 - The repo is on an exFAT drive: `git` needs `safe.directory` for this path, and
   `CARGO_TARGET_DIR` points at a SHORT NTFS folder (a deep one breaks MinGW `dlltool`).
 - The nightly toolchain and the `wasm32-wasip1` target are prerequisites (`csrun` needs `-Z
-  script`), and `cargo-audit` for the release gate (`cargo install cargo-audit --locked`); the
-  wasmtime 40.x pin and why: `design-decisions.md`.
+  script`), and `cargo-audit` for the release gate (`cargo install cargo-audit --locked`).
+- 🔒 **No C library and no cmake / NASM in rsxtk's build** (owner): wasmtime keeps
+  `default-features = false`; re-measure the C footprint before adding a wasmtime feature or
+  moving its major version (`design-decisions.md` § Engine).
 
 ## Owner commands (🔒 owner, 2026-11-10, letter H34; review words 2026-11-17, letter H37)
 

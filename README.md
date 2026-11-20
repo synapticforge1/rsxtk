@@ -35,7 +35,7 @@ rustup target add wasm32-wasip1
 -   **📦 Resource Folder (`rsc/`)**: Keep local assets (HTML, CSV, JSON, etc.) in an `rsc/` folder next to your script. Read them at run time through the sandbox, or embed them at compile time with `include_str!("rsc/…")` / `include_bytes!`.
 -   **🔨 build.rs Support**: A `build.rs` next to your script is used as the script's Cargo build script (code generation, `cargo:rustc-env`, and so on).
 -   **🔍 Auto-Dependency Versioning**: Adding a dependency without a version fetches the latest release from crates.io (falls back to `*` if crates.io cannot be reached).
--   **🚀 WASI Preview 1**: Runs on `wasmtime` 40 with `wasmtime-wasi` preview-1, including WASI exit-status handling.
+-   **🚀 WASI Preview 1**: Runs on `wasmtime` 50 with `wasmtime-wasi` preview-1, including WASI exit-status handling.
 - **Smart Entry**: Attempts to run via `_start` (WASI). If missing, automatically lists callable functions.
 - **Library Mode**: Use `mod` to call specific functions with arguments from the CLI.
 - **Rich Metadata**: `info` command provides detailed function signatures (params and return types).
@@ -201,4 +201,4 @@ A `build.rs` is a normal program that Cargo compiles and runs on your machine du
 
 ### 5. Wasmtime Version Compatibility
 
-`rsxtk` is pinned to **wasmtime 40.x**. Versions 42.x and later reintroduce `aws-lc-sys` into the dependency chain, which requires **NASM** and **cmake** to build. On Windows environments without those tools the build will fail with `Missing dependency: cmake`. Do not upgrade wasmtime until NASM and cmake are available, or until an alternative pure-Rust crypto path is available in that version.
+`rsxtk` uses **wasmtime 50.x** with its default features turned off. That keeps C libraries such as `aws-lc-sys` (which needs **NASM** and **cmake**) out of the build: installing rsxtk needs only a Rust toolchain, which compiles wasmtime's two small C helper files itself.

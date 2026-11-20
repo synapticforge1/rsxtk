@@ -49,13 +49,14 @@ keyed by a machine id.
 
 | crate                        | version  | why / constraint                                                              |
 | ---------------------------- | -------- | ----------------------------------------------------------------------------- |
-| `wasmtime`                   | ^40.0.1 (lock 40.0.4) | `default-features = false`, `cranelift`, `runtime`; **42+ pulls `aws-lc-sys`** (below) |
-| `wasmtime-wasi`              | ^40.0.1 (lock 40.0.4) | `p1` requested; it implies `p2`                                |
+| `wasmtime`                   | ^50.0.3 | `default-features = false`, `cranelift`, `runtime`, `anyhow` (below) |
+| `wasmtime-wasi`              | ^50.0.3 | `p1` requested; it implies `p2`                                |
 | `wat`, `wasmprinter`, `walrus` | 1.244 / 0.244 / 0.24.4 | text ⇄ binary and optimization; **toolkit scope, stay when the engine changes** |
 | `reqwest`                    | 0.13.1   | `blocking`, `json`, `http2`, **`native-tls`** (Windows SChannel — no cmake/NASM) |
 | `clap` 4.5, `anyhow`, `serde`, `serde_json` | — | CLI, errors, manifest                                          |
 
-- `wasmtime` 42+ reintroduces `aws-lc-sys`, which needs NASM + cmake (`design-decisions.md`).
+- `wasmtime` with its DEFAULT features pulls `aws-lc-sys` (cmake + NASM); with them off it builds
+  two small C files through `cc` and no C library (`design-decisions.md` § Engine; 40 until 2026-11-20).
 - `component-model` is still ON: `wasmtime-wasi` (`p2`, implied by `p1`) and `wasmtime-wasi-io`
   enable it.
 

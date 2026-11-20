@@ -5,18 +5,22 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
 
 ## Engine and dependencies
 
-- 🔒 **`wasmtime = "40.0.1"`, `default-features = false`.** Versions 42.x+ reintroduce `aws-lc-sys`
-  in the dependency chain, which needs NASM and cmake to build; this machine has neither, and the
-  build fails with `Missing dependency: cmake`. Do not upgrade until NASM + cmake are available or
-  a pure-Rust crypto path exists in that version. The specifier is a caret (`>=40.0.1, <41`), which
-  is enough: it admits 40.x patches (`Cargo.lock` holds 40.0.4, 2026-10-23) and never 41/42. It is
-  not an exact pin; do not "fix" it to `=40.0.1`.
-  ⚠️ **Re-decide (2026-11-19, open-work 17):** `cargo audit` lists 32 advisories in wasmtime
-  40.0.4 (24) and wasmtime-wasi 40.0.4 (8) — the sandbox itself — and the 40 line has NO patched
-  release (fixed in wasmtime ≥ 42.0.2 / 43.0.1, wasmtime-wasi ≥ 44.0.2 / 45). And the pin's reason
-  may be gone: the same day, `cargo install cargo-audit` compiled `aws-lc-sys` 0.45.0 on this
-  machine, which has neither cmake nor NASM. Measure whether wasmtime 45's tree builds here before
-  deciding.
+- 🔒 **wasmtime and wasmtime-wasi `"50.0.3"` (caret), `default-features = false`**, features
+  `cranelift`, `runtime`, `anyhow` / `p1` (owner, 2026-11-20). 🔒 **The rule that does not change:
+  no C library and no cmake / NASM in rsxtk's build** (owner: "we pinned that version of wasmtime
+  because it didn't have c dependencies"). Measured 2026-11-20, `cargo tree -i` + the build
+  scripts, on 40.0.4 and 50.0.3 alike: the only C built is two small files through `cc` —
+  wasmtime's `src/runtime/vm/helpers.c` and wasmtime-internal-fiber's `src/windows.c` — with the
+  Rust toolchain's own C compiler; no `aws-lc-sys` / `aws-lc-rs`, `cmake` or `ring` is built
+  (`ring` sits in `Cargo.lock` as an unused optional dependency of `rustls-webpki`, also on 40).
+  `aws-lc-sys` comes only with wasmtime's DEFAULT features: keep `default-features = false`, and
+  re-run that measurement before adding any wasmtime feature or moving its major version.
+- **How the 40 pin ended** (2026-11-19 → 20): it was set because wasmtime 42+ with default
+  features pulls `aws-lc-sys` (cmake + NASM). `cargo audit` then found 32 advisories in wasmtime /
+  wasmtime-wasi 40.0.4 — the sandbox — with no 40.x fix; the owner chose to move. The port from 40
+  was small: `preopened_dir` takes `FsPerms::ReadWrite` (= the old `DirPerms::all()` +
+  `FilePerms::all()`), and wasmtime's own error type converts into anyhow's through its `anyhow`
+  feature. `cargo test` passed unchanged (43/43); `cargo audit` 0 vulnerabilities.
 - 🔒 **`reqwest` on `native-tls`** (Windows SChannel) for the same reason — no cmake/NASM.
 - 🔒 **`wat` / `wasmprinter` / `walrus` are toolkit scope**, not engine scope; they stay when the
   engine is swapped (wasmrt `cmem/loaders.md`).

@@ -21,11 +21,14 @@ clap = { version = "4.5", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 
-# Wasmtime: Pure-Rust Configuration
-# - default-features = false removes 'aws-lc-rs' (the CMake requirement)
-# - 42.x+ reintroduces aws-lc-sys (requires NASM/cmake) in the dep chain, stay on 40.x
-wasmtime = { version = "40.0.1", default-features = false, features = ["cranelift", "runtime"] }
-wasmtime-wasi = { version = "40.0.1", default-features = false, features = ["p1"] }
+# Wasmtime: only what rsxtk uses (Cranelift, the runtime, WASI preview 1).
+# - default-features = false keeps aws-lc-sys (cmake + NASM) and every other C library out: with
+#   these features 50.x builds the same two small C files as 40.x did, through `cc` (wasmtime's
+#   helpers.c; wasmtime-internal-fiber's windows.c) and nothing else (measured 2026-11-20).
+# - 50.x since 2026-11-20: 40.x had 32 unpatched advisories (cargo audit).
+# - `anyhow`: wasmtime's own error type converts into anyhow's (pure Rust; anyhow is already here).
+wasmtime = { version = "50.0.3", default-features = false, features = ["cranelift", "runtime", "anyhow"] }
+wasmtime-wasi = { version = "50.0.3", default-features = false, features = ["p1"] }
 
 # Wasm Tooling (Pure Rust)
 wat = "1.244.0"

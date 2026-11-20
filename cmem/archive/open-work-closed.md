@@ -35,3 +35,9 @@ Numbers are stable and never reused. Read only when the owner asks about past wo
   in `release.ts`'s gate. First run: 52 advisories; 20 fixed by lockfile-only updates (openssl,
   rustls, rustls-webpki, bytes, h2, cap-primitives; with anyhow, rand, rustix, tokio flagged
   unsound); 32 in wasmtime 40 remain → open-work 17.
+
+## Closed 2026-11-20
+
+- **17** — wasmtime 40 → 50.0.3 (owner: "yes"), `default-features = false` kept: the same two C
+  files through `cc` as on 40, no C library (`design-decisions.md` § Engine). `cargo test` 43/43
+  unchanged; `cargo audit` 0 vulnerabilities.
