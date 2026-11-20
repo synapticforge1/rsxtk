@@ -6,7 +6,7 @@ code alone is not evidence), on the tree as it will be committed.
 ## The suite: `cargo test` (tests/cli.rs, 2026-10-23)
 
 ```
-CARGO_TARGET_DIR=<short NTFS dir> cargo test           # 43 pass, 0 ignored (2026-11-19, ~3 s)
+CARGO_TARGET_DIR=<short NTFS dir> cargo test           # 75 pass, 0 ignored (2026-11-20, ~3 s)
 ```
 
 - **End to end, one file.** Each test runs the real binary (`CARGO_BIN_EXE_rsxtk`) in its own
@@ -56,6 +56,12 @@ seen to fail against their mutants), 70 script tests, every gate green; 6 min 23
 2026-11-20, on **wasmtime 50.0.3**: `cargo test` 43/43 UNCHANGED (the engine-agnostic suite as
 referee, as planned for item 3), clippy 0, release build 4 min 00 s, `surface.txt` fresh, 70
 script tests, `cargo audit` 0 vulnerabilities, licences 269 packages allowed.
+**The 0.6.0 review** (2026-11-20, `review-process.md` § Last review) added 32 tests to `tests/cli.rs`
+(43 → 75) and 3 to `scripts/` (70 → 73), one per fix, each seen to fail without it — by running
+the new tests against the previous commit's `src/main.rs` (exact bytes via `cmd /c "git show … >"`,
+then touched: best-practices R.6). A race-based lock test that passed on the unfixed code was
+replaced by a deterministic one (it holds the lock and sees `add` wait). The full suite and every
+gate passed once on win-x64 at 4f2afa6.
 
 Use `CARGO_TARGET_DIR` on NTFS and SHORT: a deep path breaks MinGW `dlltool` in `windows-sys`
 ("Can't open def file"); `%TEMP%\rsxtk-t` works (`local/environment.md`).

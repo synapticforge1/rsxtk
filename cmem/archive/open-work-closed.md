@@ -41,3 +41,5 @@ Numbers are stable and never reused. Read only when the owner asks about past wo
 - **17** — wasmtime 40 → 50.0.3 (owner: "yes"), `default-features = false` kept: the same two C
   files through `cc` as on 40, no C library (`design-decisions.md` § Engine). `cargo test` 43/43
   unchanged; `cargo audit` 0 vulnerabilities.
+- **16** — the first review under the final standard: complete at `4f2afa6`
+  (`review-process.md` § Last review).

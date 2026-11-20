@@ -1,7 +1,7 @@
 # review-process.md — rsxtk's slots in the review standard
 
 The standard is `../workspace/cmem/review-process.md` (🔒 owner, 2026-11-17, letter H37); this file
-fills only what differs for rsxtk (its § 12). Last verified 2026-11-19. Briefs are the standard's
+fills only what differs for rsxtk (its § 12). Last verified 2026-11-20. Briefs are the standard's
 item lists word for word plus the scope; they are not copied here.
 
 ## The loop, as rsxtk runs it
@@ -22,15 +22,23 @@ item lists word for word plus the scope; they are not copied here.
 
 ## Last review
 
-- None under this standard yet. rsxtk had no open review issues in a tracked ledger on 2026-11-19
-  (H37 (c): nothing to move).
+- Review complete: 4f2afa6
+- For 0.6.0, 2026-11-20 (owner: "review"); scope `rsxtk_v0.5.2..264b408`, branch `review/0.6.0`.
+  First review 22 findings (basic 4, hardening 14 — one of them, H7, rejected by the owner's
+  decision — security 2, privacy 2, licensing 0) + 1 owner question; the five re-review rounds found
+  12 more (basic 5, hardening 7) and were fixed; the last re-review of every class was empty. Counts only — the issues stay in
+  the gitignored `review-issues.md`. Owner decisions in `design-decisions.md` § Review 0.6.0.
+- Full suite once on win-x64 at 4f2afa6 (Windows 11, nightly-2026-11-04): release build, clippy 0,
+  `cargo test` 75/75, `bun test scripts/` 73/73, check-privacy, check-licences (269), `cargo audit`
+  0 vulnerabilities, check-cmem. `compat.ts --release` runs at the bump (it refuses an already
+  released version by design). Other platforms: pending (`platforms.md`).
 
 ## Slots
 
 - **Private-data paths:** `cmem/local/`, `cmem/review-issues.md`, `.claude/`, the root `CLAUDE.md`
   — all gitignored.
-- **Reference results** (basic review: "reference results hold"): `cargo test` 41 pass;
-  `bun test scripts/` (count in `testing.md`); `surface.txt` fresh; clippy 0 warnings. Any change
+- **Reference results** (basic review: "reference results hold"): `cargo test` 75 pass;
+  `bun test scripts/` 73; `surface.txt` fresh (94 entries); clippy 0 warnings (2026-11-20). Any change
   in a count is a finding until explained.
 - **Support matrix and platform notes:** [platforms.md](platforms.md).
 - **Licence inventory and notices:** `licences.txt` (committed; every package in `Cargo.lock`
@@ -42,11 +50,13 @@ item lists word for word plus the scope; they are not copied here.
   three). rsxtk ships SOURCE only: no dependency is bundled, so no third-party notice file ships.
 - **Outputs that can carry user facts:**
   - `.tk/<stem>/` in the current folder: the mirrored script, `build.rs` and `rsc/`, Cargo's build
-    output, and the cached optimized `.wasm` (no machine id since 2026-11-19);
+    output, the cached optimized `.wasm` and `source.id` (a hash of the script's path and sources);
+  - lock files, one per script edited by add / remove / fmt, kept: `<temp>/rsxtk-locks/` (windows,
+    mac), `~/.cache/rsxtk/locks/` (linux, 0700) — empty, named by a hash of the script's path;
   - error messages, which print the user's paths;
   - network: `add` without a version asks crates.io for the latest (requested by the user; a fixed
     `User-Agent`); nothing else talks to the network. No telemetry.
-  - a guest sees only the script's parent folder (the one preopen).
+  - a guest sees only the script's parent folder (the one preopen), read-only unless `--allow-write`.
 - **Gate scripts** (run locally by `scripts/release.ts`, after `scripts/review-gate.ts`; CI only
   publishes): `cargo build --release --locked`; `cargo clippy --all-targets --locked -- -D
   warnings`; `cargo test --locked`; `bun test scripts/`; `bun scripts/check-privacy.ts` (privacy

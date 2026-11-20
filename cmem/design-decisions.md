@@ -77,6 +77,23 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
   It was a prefix match before, so `remove serde` also deleted `serde_json`. Limitation kept: a
   `[dependencies.<name>]` table spanning several lines is not recognised (no `=` on its header).
 
+## Review 0.6.0 — the owner's decisions (2026-11-20)
+
+- 🔒 **The guest's folder is READ-ONLY; `--allow-write` grants write** (security S1: a module saved
+  into a shared folder could rewrite every file beside it). The folder stays the only preopen.
+- 🔒 **`--max-memory <MiB>` (default 4096) is ONE budget for all of a guest's memories and tables**
+  (`GuestBudget`, a `ResourceLimiter`; a table element counts as a pointer). **No time limit** on a
+  guest or on `cargo build` (Ctrl-C ends a run; deep-nesting compile time, H7, was rejected on this).
+- **Manifest editing** (`add` / `remove`): only `[dependencies]` is edited; a crate's
+  `[dependencies.<crate>]` table and sub-tables, in any quoting, are its entry; comments and strings
+  are skipped; an entry that never closes or a manifest with multi-line strings is refused, never
+  guessed. The manifest must start the file (a BOM and blank lines may precede it).
+- **A lock per script** for add / remove / fmt (kept files; per-user folder; 60-s wait, then a
+  named error). **The script cache** is keyed by a fingerprint of the sources, not timestamps.
+- 🔒 **GitHub rulesets (owner, 2026-11-20):** `main` — no deletion, no force-push; tags
+  `refs/tags/rsxtk_v*` — no deletion, force-push or update. **The logo** was made with Gemini's help
+  (owner); its terms were not verified by the review (not a finding).
+
 ## The wasmrt switch (planned, owner decisions)
 
 - 🔒 rsxtk takes **wasmrt** by default through the native `wasmrt-core` rlib — no C ABI (owner;

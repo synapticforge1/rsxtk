@@ -38,6 +38,10 @@ commands as 0.4.4);
 `rsc/` is read at run time through the preopen, and mirrored to `.tk/<stem>/src/rsc/` for
 `include_str!` (2026-10-23).
 
+Global options (0.6.0, used by `run`, `mod`, `bench`): `--allow-write` (the guest's folder is
+read-only without it) and `--max-memory <MiB>` (default 4096; one budget for all guest memories and
+tables). `surface.txt`: 94 entries.
+
 Engine config (`create_engine`): Cranelift `OptLevel::Speed`, SIMD, bulk memory, multi-memory on.
 No wasmtime disk cache is configured. Only `.rs` scripts are cached, as the optimized
 `.tk/<stem>/<stem>.wasm`, reused while it is newer than the script, `build.rs` and `rsc/`; every
