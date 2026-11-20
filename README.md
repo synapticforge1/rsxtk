@@ -34,7 +34,7 @@ rustup target add wasm32-wasip1
 -   **⚡ Script Cache**: A `.rs` script is built once to an optimized `.wasm` and reused until the script changes, so repeated runs skip `cargo`. The cached module is validated on every run.
 -   **📦 Resource Folder (`rsc/`)**: Keep local assets (HTML, CSV, JSON, etc.) in an `rsc/` folder next to your script. Read them at run time through the sandbox, or embed them at compile time with `include_str!("rsc/…")` / `include_bytes!`.
 -   **🔨 build.rs Support**: A `build.rs` next to your script is used as the script's Cargo build script (code generation, `cargo:rustc-env`, and so on).
--   **🔍 Auto-Dependency Versioning**: Adding a dependency without a version fetches the latest release from crates.io (falls back to `*` if crates.io cannot be reached).
+-   **🔍 Auto-Dependency Versioning**: Adding a dependency without a version fetches the latest release from crates.io. A crate crates.io does not know is an error; if crates.io cannot be reached, `*` is written with a warning so you can pin a version later.
 -   **🚀 WASI Preview 1**: Runs on `wasmtime` 50 with `wasmtime-wasi` preview-1, including WASI exit-status handling.
 - **Smart Entry**: Attempts to run via `_start` (WASI). If missing, automatically lists callable functions.
 - **Library Mode**: Use `mod` to call specific functions with arguments from the CLI.
@@ -101,18 +101,20 @@ rsxtk csrun my_script.rs
 | `mod` | `rsxtk mod <file> [function] [args]...` | Calls an exported function with CLI arguments (`i32`/`i64`/`f32`/`f64`); with no function, shows the module info. |
 | `csrun` | `rsxtk csrun <file>` | Runs file natively via `cargo -Z script`. |
 | `build` | `rsxtk build <file> <target>` | Builds a script to `wasi` or `wasm` (writes `<file>.wasm`), or `wat` (also writes `<file>.wat`). |
-| `convert` | `rsxtk convert <input> [-o <output>]` | Converts `.wasm` ⇄ `.wat`. |
-| `init` | `rsxtk init <name>` | Creates a new script with a manifest header. |
+| `convert` | `rsxtk convert <input> [-o <output>]` | Converts `.wasm` ⇄ `.wat` (an output naming the input is refused). |
+| `init` | `rsxtk init <name>` | Creates a new script with a manifest header (never overwrites an existing file). |
 | `initmod` | `rsxtk initmod <name>` | Creates a new library-module template (exports `add`); call it with `rsxtk mod <name>.rs add 2 3`. A script without `fn main` is built as a library. |
 | `resource` | `rsxtk resource [dir]` | Creates an `rsc/` folder for local assets (default: current directory). |
 | `bench` | `rsxtk bench <file> [-i <n>]` | Runs the file `n` times (default 5) and prints the average time. |
 | `add` | `rsxtk add <file> <crate> [version]` | Adds a dependency to the script manifest (latest version if omitted). |
 | `remove` | `rsxtk remove <file> <crate>` | Removes a dependency from the script manifest. |
 | `list` | `rsxtk list <file>` | Lists current dependencies in the script. |
-| `fmt` | `rsxtk fmt <file>` | Formats the Rust code inside the script (preserving manifest). |
+| `fmt` | `rsxtk fmt <file>` | Formats the Rust code inside the script with `rustfmt` (edition 2021), preserving the manifest; if rustfmt fails, the file is left unchanged. |
 | `optimize` | `rsxtk optimize -i <input> [-o <output>]` | Rewrites a `.wasm` through Walrus (overwrites the input if `-o` is omitted). |
 | `clean` | `rsxtk clean` | Wipes the `.tk` build cache. |
 | `info` | `rsxtk info <file>` | Shows exported functions with their signatures, and whether the module uses WASI. |
+
+**Guest limits** (`run`, `mod`, `bench`): each memory of a guest may grow to at most 4096 MiB; `--max-memory <MiB>` changes the cap (for example `rsxtk --max-memory 512 run app.wasm`). There is no time limit: a guest that loops forever runs until you stop it with Ctrl-C.
 
 ---
 

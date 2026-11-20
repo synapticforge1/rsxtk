@@ -3,9 +3,8 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 use anyhow::{Result, bail, anyhow};
 use clap::{Parser, Subcommand, ValueEnum};
-use reqwest::header::USER_AGENT;
 use serde_json::Value;
-use wasmtime::{Engine, Linker, Module, Store, Val, Config, OptLevel};
+use wasmtime::{Engine, Linker, Module, Store, StoreLimits, StoreLimitsBuilder, Val, Config, OptLevel};
 use wasmtime_wasi::{FsPerms, WasiCtxBuilder};
 use wasmtime_wasi::p1::{self, WasiP1Ctx};
 
@@ -14,7 +13,14 @@ use wasmtime_wasi::p1::{self, WasiP1Ctx};
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+    /// Largest size one guest memory may reach, in MiB (run, mod, bench)
+    #[arg(long, global = true, default_value_t = 4096, value_parser = clap::value_parser!(u64).range(1..=1_048_576))]
+    max_memory: u64,
 }
+
+/// What a guest may use: its memory cap (owner, 2026-11-20: a memory cap, no time limit).
+#[derive(Clone, Copy)]
+struct Sandbox { max_memory_bytes: usize }
 
 #[derive(Subcommand)]
 #[command(rename_all = "lowercase")]
@@ -67,7 +73,21 @@ enum Commands {
 #[value(rename_all = "lowercase")]
 enum BuildTarget { Wasi, Wasm, Wat }
 
-struct MyState { wasi: WasiP1Ctx }
+struct MyState { wasi: WasiP1Ctx, limits: StoreLimits }
+
+/// A linker with WASI preview 1, and a store whose guest sees the module's folder as `.` and
+/// stdio and arguments — never the environment — with its memories capped by `sandbox`.
+fn new_store(engine: &Engine, module_path: &Path, sandbox: Sandbox) -> Result<(Linker<MyState>, Store<MyState>)> {
+    let mut linker: Linker<MyState> = Linker::new(engine);
+    p1::add_to_linker_sync(&mut linker, |state| &mut state.wasi)?;
+    let mut builder = WasiCtxBuilder::new();
+    builder.inherit_stdio().inherit_args();
+    builder.preopened_dir(module_path.parent().unwrap(), ".", FsPerms::ReadWrite)?;
+    let limits = StoreLimitsBuilder::new().memory_size(sandbox.max_memory_bytes).build();
+    let mut store = Store::new(engine, MyState { wasi: builder.build_p1(), limits });
+    store.limiter(|state| &mut state.limits);
+    Ok((linker, store))
+}
 
 fn create_engine() -> Result<Engine> {
     let mut config = Config::new();
@@ -81,10 +101,13 @@ fn create_engine() -> Result<Engine> {
 fn main() -> Result<()> {
     let cli = Cli::parse();
     let engine = create_engine()?;
+    let sandbox = Sandbox {
+        max_memory_bytes: usize::try_from(cli.max_memory.saturating_mul(1024 * 1024)).unwrap_or(usize::MAX),
+    };
 
     match cli.command {
-        Commands::Run { path } => run_wasm(&engine, &path),
-        Commands::Mod { path, args } => run_wasm_mod(&engine, &path, args),
+        Commands::Run { path } => run_wasm(&engine, &path, sandbox),
+        Commands::Mod { path, args } => run_wasm_mod(&engine, &path, args, sandbox),
         Commands::Csrun { path } => run_cargo_script(&path),
         Commands::Build { path, target } => {
             match target {
@@ -99,15 +122,15 @@ fn main() -> Result<()> {
         Commands::Init { name } => init_script(&name, false),
         Commands::InitMod { name } => init_script(&name, true),
         Commands::Resource { path } => create_resource_dir(path.as_deref()),
-        Commands::Bench { path, iterations } => benchmark_wasm(&engine, &path, iterations),
+        Commands::Bench { path, iterations } => benchmark_wasm(&engine, &path, iterations, sandbox),
         Commands::Add { path, crate_name, version } => {
-            let ver = version.unwrap_or_else(|| get_latest_version(&crate_name));
+            let ver = match version { Some(v) => v, None => get_latest_version(&crate_name)? };
             edit_deps(&path, &crate_name, Some(&ver))
         },
         Commands::Remove { path, crate_name } => edit_deps(&path, &crate_name, None),
         Commands::List { path } => list_deps(&path),
         Commands::Fmt { path } => format_script(&path),
-        Commands::Optimize { input, output } => optimize_wasm(&input, output),
+        Commands::Optimize { input, output } => optimize_wasm(&engine, &input, output),
         Commands::Clean => clean_cache(),
         Commands::Info { path } => print_info(&engine, &path),
     }
@@ -115,24 +138,17 @@ fn main() -> Result<()> {
 
 // --- WASM Loading & Execution ---
 
-fn run_wasm(engine: &Engine, path: &Path) -> Result<()> {
+fn run_wasm(engine: &Engine, path: &Path, sandbox: Sandbox) -> Result<()> {
     let abs_path = fs::canonicalize(path)?;
     let module = load_module(engine, &abs_path)?;
-    execute_module(engine, module, &abs_path)
+    execute_module(engine, module, &abs_path, sandbox)
 }
 
-fn run_wasm_mod(engine: &Engine, path: &Path, args: Vec<String>) -> Result<()> {
+fn run_wasm_mod(engine: &Engine, path: &Path, args: Vec<String>, sandbox: Sandbox) -> Result<()> {
     let abs_path = fs::canonicalize(path)?;
     let module = load_module(engine, &abs_path)?;
 
-    let mut linker: Linker<MyState> = Linker::new(engine);
-    p1::add_to_linker_sync(&mut linker, |state| &mut state.wasi)?;
-
-    let mut builder = WasiCtxBuilder::new();
-    builder.inherit_stdio().inherit_args();
-    builder.preopened_dir(abs_path.parent().unwrap(), ".", FsPerms::ReadWrite)?;
-
-    let mut store = Store::new(engine, MyState { wasi: builder.build_p1() });
+    let (linker, mut store) = new_store(engine, &abs_path, sandbox)?;
     let instance = linker.instantiate(&mut store, &module)?;
 
     if args.is_empty() {
@@ -160,6 +176,10 @@ fn run_wasm_mod(engine: &Engine, path: &Path, args: Vec<String>) -> Result<()> {
             _ => bail!("Unsupported parameter type"),
         });
     }
+    // Review H13: extra arguments were silently dropped.
+    if args.len() - 1 > wasm_params.len() {
+        bail!("❌ '{}' takes {} argument(s); {} were given.", func_name, wasm_params.len(), args.len() - 1);
+    }
 
     let mut results = vec![Val::I32(0); func_type.results().len()];
     func.call(&mut store, &wasm_params, &mut results)?;
@@ -167,15 +187,8 @@ fn run_wasm_mod(engine: &Engine, path: &Path, args: Vec<String>) -> Result<()> {
     Ok(())
 }
 
-fn execute_module(engine: &Engine, module: Module, abs_path: &Path) -> Result<()> {
-    let mut linker: Linker<MyState> = Linker::new(engine);
-    p1::add_to_linker_sync(&mut linker, |state| &mut state.wasi)?;
-
-    let mut builder = WasiCtxBuilder::new();
-    builder.inherit_stdio().inherit_args();
-    builder.preopened_dir(abs_path.parent().unwrap(), ".", FsPerms::ReadWrite)?;
-
-    let mut store = Store::new(engine, MyState { wasi: builder.build_p1() });
+fn execute_module(engine: &Engine, module: Module, abs_path: &Path, sandbox: Sandbox) -> Result<()> {
+    let (linker, mut store) = new_store(engine, abs_path, sandbox)?;
     let instance = linker.instantiate(&mut store, &module)?;
 
     if let Some(func) = instance.get_func(&mut store, "_start") {
@@ -198,7 +211,16 @@ fn load_module(engine: &Engine, path: &Path) -> Result<Module> {
     match ext {
         "rs" => {
             let (artifact, _) = build_and_cache_script(engine, path)?;
-            Ok(Module::new(engine, &fs::read(artifact)?)?)
+            match Module::new(engine, &fs::read(&artifact)?) {
+                Ok(module) => Ok(module),
+                // A damaged cache (review H10: truncated by a crash or a full disk) is dropped and
+                // the script built once more; a second failure is reported.
+                Err(_) => {
+                    let _ = fs::remove_file(artifact.with_file_name("source.id"));
+                    let (artifact, _) = build_and_cache_script(engine, path)?;
+                    Ok(Module::new(engine, &fs::read(artifact)?)?)
+                }
+            }
         },
         "wat" => {
             let bytes = fs::read(path)?;
@@ -229,8 +251,7 @@ fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<(PathBu
     let cached_path = cache_root.join(format!("{}.wasm", stem));
 
     let content = fs::read_to_string(script_path)?;
-    let parts: Vec<&str> = content.splitn(3, "---").collect();
-    if parts.len() < 3 {
+    let Some((manifest, code)) = split_manifest(&content)? else {
         bail!(
             "❌ Missing script manifest in '{}'.\n\n\
             WASI scripts require a header block for dependencies.\n\
@@ -239,8 +260,8 @@ fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<(PathBu
             script_path.file_name().unwrap().to_str().unwrap(),
             script_path.file_name().unwrap().to_str().unwrap()
         );
-    }
-    let code = parts[2].trim_start();
+    };
+    let code = code.trim_start();
     let is_lib = !has_main_fn(code);
     // Cargo names a library's output after the crate name, with '-' turned into '_'.
     let artifact = if is_lib { stem.replace('-', "_") } else { stem.to_string() };
@@ -274,7 +295,7 @@ fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<(PathBu
     };
     // A leftover file from the other kind would be built too, so remove it.
     let _ = fs::remove_file(cache_root.join(stale_file));
-    fs::write(cache_root.join("Cargo.toml"), format!("[package]\nname=\"{}\"\nversion=\"0.1.0\"\nedition=\"2021\"\n\n{}{}", stem, lib_section, parts[1].trim()))?;
+    fs::write(cache_root.join("Cargo.toml"), format!("[package]\nname=\"{}\"\nversion=\"0.1.0\"\nedition=\"2021\"\n\n{}{}", stem, lib_section, manifest.trim()))?;
     fs::write(cache_root.join(src_file), format!("\n{}", code))?;
 
     // Cargo runs build.rs from the package root. rsc/ goes under src/, so include_str!("rsc/…")
@@ -296,13 +317,55 @@ fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<(PathBu
 
     Module::validate(engine, &optimized_wasm)
         .map_err(|e| anyhow!("The optimized module of '{}' does not validate: {}", script_path.display(), e))?;
-    fs::write(&cached_path, optimized_wasm)?;
-    fs::write(&id_path, &fingerprint)?;
+    // Module first, then its fingerprint: an interrupted run leaves no fingerprint, so the next
+    // run rebuilds instead of trusting a half-written module.
+    write_atomic(&cached_path, &optimized_wasm)?;
+    write_atomic(&id_path, fingerprint.as_bytes())?;
     // Up to 0.5.2 the cache was a precompiled .cwasm plus a machine id; neither is read any more.
     let _ = fs::remove_file(cache_root.join(format!("{}.cwasm", stem)));
     let _ = fs::remove_file(cache_root.join("machine.id"));
 
     Ok((cached_path, wasm_output))
+}
+
+/// The `---`-fenced manifest and the code after it. A UTF-8 byte-order mark and blank lines may
+/// come before the opening fence; each fence is a line of exactly `---`. `Ok(None)` when the file
+/// has no manifest; an error when the closing fence is missing, or when other text comes before a
+/// `---` line (a manifest must start the file — injecting a second one would corrupt it).
+fn split_manifest(content: &str) -> Result<Option<(String, String)>> {
+    let body = content.strip_prefix('\u{feff}').unwrap_or(content);
+    let mut offset = 0;
+    let mut open = None;
+    for line in body.split_inclusive('\n') {
+        let fence = line.trim() == "---";
+        match open {
+            None if line.trim().is_empty() => {}
+            None if fence => open = Some(offset + line.len()),
+            None => break,
+            Some(start) if fence => {
+                return Ok(Some((body[start..offset].to_string(), body[offset + line.len()..].to_string())));
+            }
+            Some(_) => {}
+        }
+        offset += line.len();
+    }
+    if open.is_some() { bail!("❌ Invalid format: Manifest block is incomplete (no closing '---' line)."); }
+    if body.lines().any(|l| l.trim() == "---") {
+        bail!("❌ Text comes before the '---' manifest block; the manifest must start the file.");
+    }
+    Ok(None)
+}
+
+/// Writes `bytes` to `path` through a temporary file beside it and a rename, so an interrupted or
+/// failed write never leaves a half-written file, and readers see the old or the new file whole.
+fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    let name = path.file_name().ok_or_else(|| anyhow!("'{}' has no file name", path.display()))?;
+    let tmp = path.with_file_name(format!(".{}.rsxtk-{}.tmp", name.to_string_lossy(), std::process::id()));
+    if let Err(e) = fs::write(&tmp, bytes).and_then(|_| fs::rename(&tmp, path)) {
+        let _ = fs::remove_file(&tmp);
+        return Err(anyhow!("could not write '{}': {}", path.display(), e));
+    }
+    Ok(())
 }
 
 /// True when the code defines `fn main` (followed by optional whitespace and `(`).
@@ -367,7 +430,14 @@ fn init_script(name: &str, is_mod: bool) -> Result<()> {
     } else {
         "---\n[dependencies]\n---\nfn main() {\n    println!(\"Hello from rsxtk!\");\n}"
     };
-    fs::write(&filename, content)?;
+    // create_new: an existing file is never replaced (review H4).
+    let mut file = match fs::OpenOptions::new().write(true).create_new(true).open(&filename) {
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+            bail!("❌ '{}' already exists; rsxtk init does not overwrite it.", filename)
+        }
+        other => other?,
+    };
+    std::io::Write::write_all(&mut file, content.as_bytes())?;
     println!("✨ Initialized {}", filename);
     Ok(())
 }
@@ -415,7 +485,7 @@ fn build_with_virtual_cargo(engine: &Engine, path: &Path) -> Result<PathBuf> {
     let abs_path = fs::canonicalize(path)?;
     let (_, wasm_path) = build_and_cache_script(engine, &abs_path)?;
     let local_wasm = abs_path.with_extension("wasm");
-    fs::copy(wasm_path, &local_wasm)?;
+    write_atomic(&local_wasm, &fs::read(wasm_path)?)?;
     println!("🔨 Built: {}", local_wasm.display());
     Ok(local_wasm)
 }
@@ -424,8 +494,12 @@ fn convert_wasm_wat(input: &Path, output: Option<PathBuf>) -> Result<()> {
     let data = fs::read(input)?;
     let is_wasm = input.extension().is_some_and(|e| e == "wasm");
     let out = output.unwrap_or_else(|| input.with_extension(if is_wasm { "wat" } else { "wasm" }));
-    if is_wasm { fs::write(&out, wasmprinter::print_bytes(&data)?)?; }
-    else { fs::write(&out, wat::parse_bytes(&data)?)?; }
+    // Review H9: `-o` naming the input replaced it with the other format.
+    if same_file(input, &out) {
+        bail!("❌ The output '{}' is the input file; choose another name with -o.", out.display());
+    }
+    let bytes = if is_wasm { wasmprinter::print_bytes(&data)?.into_bytes() } else { wat::parse_bytes(&data)?.into_owned() };
+    write_atomic(&out, &bytes)?;
     println!("🔄 Converted to: {}", out.display());
     Ok(())
 }
@@ -437,34 +511,81 @@ fn run_cargo_script(path: &Path) -> Result<()> {
 }
 
 fn edit_deps(path: &Path, crate_name: &str, version: Option<&str>) -> Result<()> {
+    check_crate_name(crate_name)?;
+    if let Some(v) = version { check_version(v)?; }
     let content = fs::read_to_string(path)?;
-    
-    // Auto-detect manifest
-    let (manifest, code) = if content.starts_with("---") {
-        let parts: Vec<&str> = content.splitn(3, "---").collect();
-        if parts.len() < 3 { bail!("❌ Invalid format: Manifest block is incomplete."); }
-        (parts[1].to_string(), parts[2].to_string())
-    } else {
-        (String::from("[dependencies]\n"), content)
-    };
+    // No manifest yet: one is injected in front of the code (the BOM, if any, is dropped).
+    let (manifest, code) = split_manifest(&content)?.unwrap_or_else(|| {
+        (String::from("[dependencies]\n"), content.strip_prefix('\u{feff}').unwrap_or(&content).to_string())
+    });
+    let manifest = edit_manifest(&manifest, crate_name, version);
+    write_atomic(path, format!("---\n{}\n---\n{}", manifest.trim(), code.trim_start()).as_bytes())?;
+    println!("✅ Manifest updated in {}", path.display());
+    Ok(())
+}
 
-    let mut lines: Vec<String> = manifest.lines()
-        .filter(|l| {
-            let t = l.trim();
-            !t.is_empty() && dep_key(t) != Some(crate_name) && t != "[dependencies]"
-        })
-        .map(|s| s.to_string())
-        .collect();
-
-    if let Some(v) = version && !crate_name.is_empty() {
-        lines.push(format!("{} = \"{}\"", crate_name, v));
+/// The manifest with `crate_name` removed from its `[dependencies]` table and, given a version,
+/// added at the END OF THAT TABLE (a `[dependencies]` table is created first if there is none).
+/// Every other table — `[build-dependencies]`, `[features]`, `[target.…]` — is kept as it is. An
+/// entry spanning several lines (`x = { … \n … }`) is removed whole.
+fn edit_manifest(manifest: &str, crate_name: &str, version: Option<&str>) -> String {
+    let mut out: Vec<String> = Vec::new();
+    let mut in_deps = false;
+    let mut deps_end: Option<usize> = None;
+    let mut open_brackets = 0i32; // still inside a removed multi-line entry
+    for line in manifest.lines() {
+        let t = line.trim();
+        if open_brackets > 0 { open_brackets += bracket_balance(t); continue; }
+        if t.starts_with('[') { // a table header: `[x]` or `[[x]]`
+            if in_deps { deps_end = Some(out.len()); }
+            in_deps = t == "[dependencies]";
+            if in_deps { deps_end = None; }
+            out.push(line.to_string());
+            continue;
+        }
+        if in_deps && dep_key(t) == Some(crate_name) {
+            open_brackets = bracket_balance(t).max(0);
+            continue;
+        }
+        out.push(line.to_string());
     }
+    if in_deps { deps_end = Some(out.len()); }
+    if let Some(v) = version {
+        let entry = format!("{} = \"{}\"", crate_name, v);
+        match deps_end {
+            Some(mut at) => {
+                while at > 0 && out[at - 1].trim().is_empty() { at -= 1; }
+                out.insert(at, entry);
+            }
+            None => { out.insert(0, entry); out.insert(0, "[dependencies]".to_string()); }
+        }
+    } else if !out.iter().any(|l| l.trim() == "[dependencies]") {
+        out.insert(0, "[dependencies]".to_string());
+    }
+    out.join("\n")
+}
 
-    let new_content = format!("---\n[dependencies]\n{}\n---\n{}", lines.join("\n").trim(), code.trim_start());
-    fs::write(path, new_content)?;
-    
-    if !crate_name.is_empty() {
-        println!("✅ Manifest updated in {}", path.display());
+/// Opening minus closing `{` / `[` brackets on a manifest line (strings are not special-cased:
+/// crate entries do not put brackets inside their strings).
+fn bracket_balance(line: &str) -> i32 {
+    line.chars().map(|c| match c { '{' | '[' => 1, '}' | ']' => -1, _ => 0 }).sum()
+}
+
+/// A crate name as crates.io allows it: an ASCII letter, then letters, digits, `-` or `_`, at most
+/// 64 characters. Anything else would be written into the manifest and a URL unescaped.
+fn check_crate_name(name: &str) -> Result<()> {
+    let ok = name.len() <= 64
+        && name.starts_with(|c: char| c.is_ascii_alphabetic())
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    if !ok { bail!("❌ '{}' is not a valid crate name (letters, digits, '-' and '_', starting with a letter).", name); }
+    Ok(())
+}
+
+/// A version requirement goes between quotes in the manifest, so it may not contain a quote, a
+/// backslash or a line break.
+fn check_version(version: &str) -> Result<()> {
+    if version.trim().is_empty() || version.chars().any(|c| c == '"' || c == '\\' || c.is_control()) {
+        bail!("❌ '{}' is not a valid version requirement.", version.escape_debug());
     }
     Ok(())
 }
@@ -477,14 +598,37 @@ fn dep_key(line: &str) -> Option<&str> {
     (!key.is_empty()).then_some(key)
 }
 
-fn get_latest_version(crate_name: &str) -> String {
-    reqwest::blocking::Client::builder()
-        .user_agent(USER_AGENT)
-        .build().ok()
-        .and_then(|c| c.get(format!("https://crates.io/api/v1/crates/{}", crate_name)).send().ok())
-        .and_then(|res| res.json::<Value>().ok())
-        .and_then(|j| j["crate"]["max_version"].as_str().map(|s| s.to_string()))
-        .unwrap_or_else(|| "*".to_string())
+/// Identifies rsxtk to crates.io, as its crawler policy asks.
+const CRATES_IO_USER_AGENT: &str =
+    concat!("rsxtk/", env!("CARGO_PKG_VERSION"), " (+https://github.com/synapticforge1/rsxtk)");
+
+/// The newest version of `crate_name` on crates.io. A crate crates.io does not know is an error.
+/// When crates.io cannot be reached or answers oddly, `*` is written (as the README documents) with
+/// a warning, so the user knows to pin a version later.
+fn get_latest_version(crate_name: &str) -> Result<String> {
+    check_crate_name(crate_name)?;
+    let url = format!("https://crates.io/api/v1/crates/{}", crate_name);
+    let response = reqwest::blocking::Client::builder()
+        .user_agent(CRATES_IO_USER_AGENT)
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?
+        .get(&url)
+        .send();
+    let why = match response {
+        Ok(res) if res.status() == reqwest::StatusCode::NOT_FOUND => {
+            bail!("❌ crates.io has no crate named '{}'.", crate_name)
+        }
+        Ok(res) if res.status().is_success() => {
+            match res.json::<Value>().ok().and_then(|j| j["crate"]["max_version"].as_str().map(str::to_string)) {
+                Some(v) => return Ok(v),
+                None => "its answer had no version".to_string(),
+            }
+        }
+        Ok(res) => format!("it answered {}", res.status()),
+        Err(e) => format!("it could not be reached: {}", e),
+    };
+    eprintln!("⚠️ crates.io lookup for '{}' failed ({}); writing \"*\" — pin a version later.", crate_name, why);
+    Ok("*".to_string())
 }
 
 fn create_resource_dir(path: Option<&Path>) -> Result<()> {
@@ -502,27 +646,25 @@ fn clean_cache() -> Result<()> {
 
 fn list_deps(path: &Path) -> Result<()> {
     let content = fs::read_to_string(path)?;
-    let parts: Vec<&str> = content.splitn(3, "---").collect();
-    if parts.len() >= 3 { println!("📦 Dependencies:\n{}", parts[1].trim()); }
-    else { println!("⚠️ No manifest found in this script."); }
+    match split_manifest(&content)? {
+        Some((manifest, _)) => println!("📦 Dependencies:\n{}", manifest.trim()),
+        None => println!("⚠️ No manifest found in this script."),
+    }
     Ok(())
 }
 
 fn format_script(path: &Path) -> Result<()> {
     let content = fs::read_to_string(path)?;
-    
-    // Preflight: Ensure manifest exists
-    if !content.starts_with("---") {
-        println!("✨ No manifest detected. Injecting '---' header...");
-        edit_deps(path, "", None)?; 
-    }
-
-    let content = fs::read_to_string(path)?;
-    let parts: Vec<&str> = content.splitn(3, "---").collect();
-
-    let formatted = rustfmt(parts[2])
+    let (manifest, code) = match split_manifest(&content)? {
+        Some(parts) => parts,
+        None => {
+            println!("✨ No manifest detected. Injecting '---' header...");
+            ("[dependencies]".to_string(), content.strip_prefix('\u{feff}').unwrap_or(&content).to_string())
+        }
+    };
+    let formatted = rustfmt(&code)
         .map_err(|e| anyhow!("{}\n'{}' is unchanged.", e, path.display()))?;
-    fs::write(path, format!("---\n{}\n---\n{}", parts[1].trim(), formatted))?;
+    write_atomic(path, format!("---\n{}\n---\n{}", manifest.trim(), formatted).as_bytes())?;
     println!("✨ Formatted {}", path.display());
     Ok(())
 }
@@ -547,16 +689,26 @@ fn rustfmt(code: &str) -> Result<String> {
     Ok(String::from_utf8(out.stdout)?)
 }
 
-fn optimize_wasm(input: &Path, output: Option<PathBuf>) -> Result<()> {
+/// True when both paths name one existing file.
+fn same_file(a: &Path, b: &Path) -> bool {
+    matches!((fs::canonicalize(a), fs::canonicalize(b)), (Ok(x), Ok(y)) if x == y)
+}
+
+fn optimize_wasm(engine: &Engine, input: &Path, output: Option<PathBuf>) -> Result<()> {
     let bytes = fs::read(input)?;
+    // Review H8: walrus panics (exit 101) on some invalid modules; validate first, so an invalid
+    // input is a named refusal and nothing is written.
+    Module::validate(engine, &bytes)
+        .map_err(|e| anyhow!("❌ '{}' is not a valid WebAssembly module: {}", input.display(), e))?;
     let mut module = walrus::Module::from_buffer(&bytes)?;
-    fs::write(output.unwrap_or_else(|| input.to_path_buf()), module.emit_wasm())?;
+    // Without -o the input is replaced, as documented — atomically, so it is never half-written.
+    write_atomic(&output.unwrap_or_else(|| input.to_path_buf()), &module.emit_wasm())?;
     Ok(())
 }
 
-fn benchmark_wasm(engine: &Engine, path: &Path, iterations: u32) -> Result<()> {
+fn benchmark_wasm(engine: &Engine, path: &Path, iterations: u32, sandbox: Sandbox) -> Result<()> {
     let start = Instant::now();
-    for _ in 0..iterations { run_wasm(engine, path)?; }
+    for _ in 0..iterations { run_wasm(engine, path, sandbox)?; }
     println!("📊 Avg Execution: {:?}", start.elapsed() / iterations);
     Ok(())
 }

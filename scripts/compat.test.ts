@@ -8,7 +8,30 @@
  * the real surface.txt keeps clap's trailing spaces and parses the same way.
  */
 import { expect, test } from "bun:test";
-import { bumpKind, commandsOf, compare, entries, floorOf, parse } from "./compat.ts";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { bumpKind, commandsOf, compare, entries, floorOf, parse, run, timeLimitMs } from "./compat.ts";
+
+test("run: a subprocess past its time limit is killed and reported as a failure (review H14)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "rsxtk-compat-"));
+  try {
+    writeFileSync(join(dir, "sleep.ts"), "await Bun.sleep(10_000);\n");
+    const started = Date.now();
+    const r = run(process.execPath, [join(dir, "sleep.ts")], dir, undefined, 300);
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(r.status).not.toBe(0);
+    expect(r.stderr).toContain("killed after its 0.3-second limit");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("run: every command has a limit; cargo's is the long one", () => {
+  expect(timeLimitMs("cargo")).toBe(45 * 60_000);
+  expect(timeLimitMs("git")).toBe(2 * 60_000);
+  expect(timeLimitMs("tar")).toBe(2 * 60_000);
+});
 
 const TOP = [
   "## rsxtk --help",

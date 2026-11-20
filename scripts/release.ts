@@ -57,10 +57,12 @@ function git(...args: string[]): string {
   return r.stdout.trim();
 }
 
-/** Run a gate step with inherited output; refuse on a non-zero exit. */
+/** Run a gate step with inherited output and a time limit (review H14); refuse on a non-zero exit. */
 function step(label: string, cmd: string, args: string[]): void {
   console.log(`== ${label}`);
-  const r = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit" });
+  const limit = 45 * 60_000;
+  const r = spawnSync(cmd, args, { cwd: ROOT, stdio: "inherit", timeout: limit });
+  if (r.status === null && r.signal !== null) fail(`${label} was killed after its ${limit / 60_000}-minute limit`);
   if (r.status !== 0) fail(`${label} failed (exit ${r.status})`);
 }
 
@@ -136,7 +138,7 @@ if (dryRun) {
 }
 
 // ── ONE push of main, read back; no tag ──
-const push = spawnSync("git", ["push", "origin", "main"], { cwd: ROOT, stdio: "inherit" });
+const push = spawnSync("git", ["push", "origin", "main"], { cwd: ROOT, stdio: "inherit", timeout: 5 * 60_000 });
 if (push.status !== 0) {
   console.error(`release: git push origin main failed (exit ${push.status})`);
   process.exit(1);

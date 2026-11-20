@@ -552,3 +552,167 @@ fn csrun_runs_natively() {
 fn csrun_missing_file_fails() {
     assert_fails(&rsxtk(&workdir("csrun_missing"), &["csrun", "nope.rs"]));
 }
+
+// --- review 0.6.0: hardening (unplanned input fails loudly and safely) ---
+
+#[test]
+fn add_puts_the_crate_in_dependencies_not_in_a_later_table() {
+    // Review H1: the new entry was appended at the END of the manifest, inside [build-dependencies].
+    let dir = workdir("h1_tables");
+    fs::write(dir.join("c.rs"), "---\n[dependencies]\nitoa = \"1\"\n\n[build-dependencies]\ncc = \"1\"\n---\nfn main() {}\n").unwrap();
+    assert_ok(&rsxtk(&dir, &["add", "c.rs", "anyhow", "1"]));
+    let text = fs::read_to_string(dir.join("c.rs")).unwrap();
+    assert!(text.starts_with("---\n[dependencies]\nitoa = \"1\"\nanyhow = \"1\"\n\n[build-dependencies]\ncc = \"1\"\n---\n"), "{}", text);
+}
+
+#[test]
+fn remove_takes_a_multi_line_entry_whole() {
+    // Review H1: only the first line of `x = { … }` spanning lines was removed; the rest stayed.
+    let dir = workdir("h1_multiline");
+    fs::write(dir.join("c.rs"), "---\n[dependencies]\nserde = { version = \"1\",\n  features = [\"derive\"] }\nitoa = \"1\"\n---\nfn main() {}\n").unwrap();
+    assert_ok(&rsxtk(&dir, &["remove", "c.rs", "serde"]));
+    let text = fs::read_to_string(dir.join("c.rs")).unwrap();
+    assert_eq!(text, "---\n[dependencies]\nitoa = \"1\"\n---\nfn main() {}\n");
+}
+
+#[test]
+fn add_to_a_script_with_a_byte_order_mark_keeps_one_manifest() {
+    // Review H2: a BOM hid the manifest, and `add` injected a second one in front of it.
+    let dir = workdir("h2_bom");
+    fs::write(dir.join("b.rs"), "\u{feff}---\n[dependencies]\n---\nfn main() {}\n").unwrap();
+    assert_ok(&rsxtk(&dir, &["add", "b.rs", "anyhow", "1"]));
+    let text = fs::read_to_string(dir.join("b.rs")).unwrap();
+    assert_eq!(text, "---\n[dependencies]\nanyhow = \"1\"\n---\nfn main() {}\n");
+}
+
+#[test]
+fn add_refuses_text_before_the_manifest_and_keeps_the_file() {
+    // Review H2: a line before `---` made `add` inject a second manifest (exit 0).
+    let dir = workdir("h2_leading");
+    let original = "// note\n---\n[dependencies]\n---\nfn main() {}\n";
+    fs::write(dir.join("l.rs"), original).unwrap();
+    let out = rsxtk(&dir, &["add", "l.rs", "anyhow", "1"]);
+    assert_fails(&out);
+    assert!(stderr(&out).contains("manifest must start the file"), "{}", stderr(&out));
+    assert_eq!(fs::read_to_string(dir.join("l.rs")).unwrap(), original);
+}
+
+#[test]
+fn fmt_of_an_unclosed_manifest_fails_without_a_panic() {
+    // Review H3: `---` without a closing fence indexed past the end (exit 101).
+    let dir = workdir("h3_unclosed");
+    fs::write(dir.join("a.rs"), "---\nfn main(){}\n").unwrap();
+    let out = rsxtk(&dir, &["fmt", "a.rs"]);
+    assert_eq!(out.status.code(), Some(1), "stderr:\n{}", stderr(&out));
+    assert!(stderr(&out).contains("Manifest block is incomplete"), "{}", stderr(&out));
+}
+
+#[test]
+fn init_refuses_to_overwrite_an_existing_file() {
+    // Review H4: `init keep` replaced keep.rs with the template.
+    let dir = workdir("h4_init");
+    fs::write(dir.join("keep.rs"), "precious").unwrap();
+    let out = rsxtk(&dir, &["init", "keep"]);
+    assert_fails(&out);
+    assert!(stderr(&out).contains("already exists"), "{}", stderr(&out));
+    assert_eq!(fs::read_to_string(dir.join("keep.rs")).unwrap(), "precious");
+    assert_fails(&rsxtk(&dir, &["initmod", "keep"]));
+    assert_eq!(fs::read_to_string(dir.join("keep.rs")).unwrap(), "precious");
+}
+
+#[test]
+fn fmt_leaves_a_users_rs_tmp_file_alone() {
+    // Review H5: fmt wrote and then deleted a fixed `<name>.rs.tmp`.
+    let dir = workdir("h5_tmp");
+    fs::write(dir.join("x.rs"), "---\n[dependencies]\n---\nfn main(){}\n").unwrap();
+    fs::write(dir.join("x.rs.tmp"), "user data").unwrap();
+    assert_ok(&rsxtk(&dir, &["fmt", "x.rs"]));
+    assert_eq!(fs::read_to_string(dir.join("x.rs.tmp")).unwrap(), "user data");
+}
+
+const GROW_WAT: &str = r#"(module
+  (memory 1)
+  (func (export "grow") (param i32) (result i32)
+    (memory.grow (local.get 0))))
+"#;
+
+#[test]
+fn guest_memory_is_capped_by_max_memory() {
+    // Review H6 (owner: a memory cap, no time limit): memory.grow took gigabytes unchecked.
+    let dir = workdir("h6_memory");
+    fs::write(dir.join("grow.wat"), GROW_WAT).unwrap();
+    // 1000 pages = 62.5 MiB: refused (-1) under a 16 MiB cap, granted (old size 1) under the default.
+    let capped = rsxtk(&dir, &["--max-memory", "16", "mod", "grow.wat", "grow", "1000"]);
+    assert_ok(&capped);
+    assert_eq!(stdout(&capped).trim(), "-1");
+    let default = rsxtk(&dir, &["mod", "grow.wat", "grow", "1000"]);
+    assert_ok(&default);
+    assert_eq!(stdout(&default).trim(), "1");
+    // The default cap is 4096 MiB: 65536 pages (4 GiB) more are refused.
+    let huge = rsxtk(&dir, &["mod", "grow.wat", "grow", "65536"]);
+    assert_ok(&huge);
+    assert_eq!(stdout(&huge).trim(), "-1");
+}
+
+#[test]
+fn optimize_refuses_an_invalid_module_and_writes_nothing() {
+    // Review H8: walrus panicked (exit 101) on some invalid modules; they are validated first now.
+    let dir = workdir("h8_optimize");
+    // Parses as wasm, but the function returns an i64 where an i32 is declared.
+    fs::write(dir.join("bad.wasm"), wat::parse_str("(module (func (result i32) i64.const 1))").unwrap()).unwrap();
+    let out = rsxtk(&dir, &["optimize", "-i", "bad.wasm", "-o", "out.wasm"]);
+    assert_eq!(out.status.code(), Some(1), "stderr:\n{}", stderr(&out));
+    assert!(stderr(&out).contains("not a valid WebAssembly module"), "{}", stderr(&out));
+    assert!(!dir.join("out.wasm").exists());
+}
+
+#[test]
+fn convert_refuses_to_overwrite_its_input() {
+    // Review H9: `convert e.wasm -o e.wasm` replaced the binary with WAT text.
+    let dir = workdir("h9_convert");
+    let bytes = wat::parse_str(LIB_WAT).unwrap();
+    fs::write(dir.join("e.wasm"), &bytes).unwrap();
+    let out = rsxtk(&dir, &["convert", "e.wasm", "-o", "e.wasm"]);
+    assert_fails(&out);
+    assert!(stderr(&out).contains("is the input file"), "{}", stderr(&out));
+    assert_eq!(fs::read(dir.join("e.wasm")).unwrap(), bytes);
+}
+
+#[test]
+fn a_truncated_script_cache_is_rebuilt() {
+    // Review H10: a half-written cached module counted as fresh and failed on every run.
+    let dir = workdir("h10_cache");
+    fs::write(dir.join("hello.rs"), SCRIPT).unwrap();
+    assert_ok(&rsxtk(&dir, &["run", "hello.rs"]));
+    let cached = dir.join(".tk/hello/hello.wasm");
+    let file = fs::OpenOptions::new().write(true).open(&cached).unwrap();
+    file.set_len(100).unwrap();
+    drop(file);
+    let out = rsxtk(&dir, &["run", "hello.rs"]);
+    assert_ok(&out);
+    assert_eq!(stdout(&out), "script ran\n");
+}
+
+#[test]
+fn add_refuses_an_invalid_crate_name_or_version() {
+    // Review H11: names and versions went into the manifest unchecked (quotes, line breaks).
+    let dir = workdir("h11_names");
+    fs::write(dir.join("s.rs"), SCRIPT).unwrap();
+    let bad_name = rsxtk(&dir, &["add", "s.rs", "evil\"\n[x]", "1"]);
+    assert_fails(&bad_name);
+    assert!(stderr(&bad_name).contains("not a valid crate name"), "{}", stderr(&bad_name));
+    let bad_version = rsxtk(&dir, &["add", "s.rs", "anyhow", "1\"\nx = \"2"]);
+    assert_fails(&bad_version);
+    assert!(stderr(&bad_version).contains("not a valid version"), "{}", stderr(&bad_version));
+    assert_eq!(fs::read_to_string(dir.join("s.rs")).unwrap(), SCRIPT);
+}
+
+#[test]
+fn mod_refuses_extra_arguments() {
+    // Review H13: `mod lib.wat add 1 2 3` silently dropped the 3.
+    let dir = workdir("h13_mod_extra");
+    fs::write(dir.join("lib.wat"), LIB_WAT).unwrap();
+    let out = rsxtk(&dir, &["mod", "lib.wat", "add", "1", "2", "3"]);
+    assert_fails(&out);
+    assert!(stderr(&out).contains("takes 2 argument(s); 3 were given"), "{}", stderr(&out));
+}

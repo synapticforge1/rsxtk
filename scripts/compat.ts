@@ -58,14 +58,27 @@ export function targetDir(which: "repo" | "compat" | "compat-prev" = "repo"): st
   return which === "repo" ? base : join(base, which);
 }
 
-export function run(cmd: string, args: string[], cwd = ROOT, target = targetDir()) {
+/**
+ * Every subprocess has a time limit (review H14): a cargo build or test may take long (a cold
+ * release build is ~4 min), anything else (git, tar) is quick. A run killed at its limit counts
+ * as a failure and says so on stderr — a stalled `git fetch` or credential prompt cannot hang a
+ * release.
+ */
+export function timeLimitMs(cmd: string): number {
+  return cmd === "cargo" ? 45 * 60_000 : 2 * 60_000;
+}
+
+export function run(cmd: string, args: string[], cwd = ROOT, target = targetDir(), limit = timeLimitMs(cmd)) {
   const r = spawnSync(cmd, args, {
     cwd,
     encoding: "utf8",
     env: { ...process.env, CARGO_TARGET_DIR: target },
     maxBuffer: 64 * 1024 * 1024,
+    timeout: limit,
   });
-  return { status: r.status ?? 1, stdout: r.stdout ?? "", stderr: r.stderr ?? "", error: r.error };
+  const timedOut = r.signal !== null && r.status === null;
+  const stderr = (r.stderr ?? "") + (timedOut ? `\n${cmd} ${args.join(" ")}: killed after its ${limit / 1000}-second limit` : "");
+  return { status: r.status ?? 1, stdout: r.stdout ?? "", stderr, error: r.error };
 }
 
 export function parse(v: string): [number, number, number] {

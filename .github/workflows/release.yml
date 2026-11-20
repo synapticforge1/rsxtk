@@ -55,6 +55,7 @@ env:
 jobs:
   checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 30 # every job has a limit (review H14); `cargo package` builds in ~5 min
     permissions:
       contents: read
     outputs:
@@ -119,6 +120,7 @@ jobs:
     needs: checks
     if: needs.checks.outputs.state != 'none'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
@@ -147,6 +149,7 @@ jobs:
   release:
     needs: [checks, tag]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
     steps:
@@ -174,6 +177,7 @@ jobs:
   publish:
     needs: [checks, release]
     runs-on: ubuntu-latest
+    timeout-minutes: 20 # holds id-token: write — never open longer than the publish needs
     permissions:
       contents: read
       id-token: write # crates.io trusted publishing; nothing else
