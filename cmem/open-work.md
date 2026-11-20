@@ -11,7 +11,7 @@ reused; closed items are in [archive/open-work-closed.md](archive/open-work-clos
   publishing is registered and MEASURED (0.5.2's `trustpub_data`, `release.md`), so nothing uses
   the repo secret `CARGO_REGISTRY_TOKEN` any more: delete it (GitHub → Settings → Secrets and
   variables → Actions) and revoke that API token on crates.io.
-- **15. The next release is a MINOR, 0.6.0** (added 2026-11-19; re-checked 2026-11-20): `run
-  x.cwasm` stopped working, the guest folder became read-only by default (`--allow-write`), and two
-  options were added (`--allow-write`, `--max-memory`); the CLI floor over `rsxtk_v0.5.2` is minor.
-  The review is complete (`review-process.md`), so the next "release" with level minor can run.
+- **15. The next release is 1.0.0** (owner, 2026-11-20, at "release"): `run x.cwasm` stopped
+  working and the guest folder became read-only by default; a 0.5.2 test checks the removed cache,
+  so the gate requires a major. 1.0.0 starts the API promise: a README Breaking Changes table (the
+  migration guide named in `design-decisions.md`) is still to be written.

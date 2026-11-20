@@ -22,7 +22,7 @@ item lists word for word plus the scope; they are not copied here.
 
 ## Last review
 
-- Review complete: 940e335
+- Review complete: 63d71b6
 - For 0.6.0, 2026-11-20 (owner: "review"); scope `rsxtk_v0.5.2..264b408`, branch `review/0.6.0`.
   First review 22 findings (basic 4, hardening 14 — one of them, H7, rejected by the owner's
   decision — security 2, privacy 2, licensing 0) + 1 owner question; the five re-review rounds found
@@ -42,7 +42,13 @@ item lists word for word plus the scope; they are not copied here.
   clippy 0, bun 75, every gate but `cargo audit`, which reads only the lockfile). README 940e335 adds
   the linux-x64 Tested on line. Re-review 7 (two agents for a two-line change: basic + hardening,
   security + privacy — a recorded deviation) was empty → **Review complete: 940e335**.
-- Platforms passed for 0.6.0: win-x64 (Windows 11), linux-x64 (Ubuntu 26.04.1 LTS under WSL 2).
+- Platforms passed: win-x64 (Windows 11), linux-x64 (Ubuntu 26.04.1 LTS under WSL 2).
+- **Released as 1.0.0, not 0.6.0** (owner, 2026-11-20): `bump.ts minor` refused because one 0.5.2
+  test checks the removed `.cwasm` cache (a deliberate break); the gate asks for a major then.
+- **63d71b6 moves the record without a re-review:** `release.ts` found `licences.txt` listing
+  rsxtk itself, so every bump made it stale; the fix (`check-licences.ts` + `licences.txt`, no
+  product code) is review tooling, which the standard's § 10 keeps outside release reviews. The
+  reviewed product is 940e335's.
 
 ## Slots
 
