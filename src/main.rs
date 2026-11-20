@@ -441,14 +441,15 @@ fn suggest_script_name(stem: &str) -> String {
 /// `build` or `info` of the same script waits — saying so — instead of racing on the mirror. No
 /// time limit: the holder is a Cargo build, which has none (owner, 2026-11-20).
 ///
-/// The `.tk` folder is checked first (open items before 1.0.1): a link at any path rsxtk keeps in
-/// it — `.tk/<stem>`, its `src`, `src/rsc`, `t`, the cached module, `source.id`, the lock file — is refused, since a build through it would
-/// write (and later load a module from) wherever it points; and on Unix a `.tk` another user owns
-/// is refused, so a shared folder's cache cannot be swapped under the user. `.tk` itself may be a
-/// link (a cache on another drive), as long as on Unix the folder it names is the user's own.
+/// The `.tk` folder is checked first (open items before 1.0.1): a link at `.tk/<stem>`, its `src`,
+/// `src/rsc`, `t`, the cached module, `source.id`, `Cargo.lock` or the lock file is refused, since a
+/// build through it would write (and later load a module from) wherever it points; on Unix a `.tk`
+/// another user owns, or every user may write, is refused, and `.tk/<stem>` is made private
+/// (`private_cache`). `.tk` itself may be a link (a cache on another drive), as long as on Unix the
+/// folder it names is the user's own.
 fn lock_cache(cache_root: &Path, stem: &str) -> Result<fs::File> {
     let tk = cache_root.parent().ok_or_else(|| anyhow!("no .tk folder for '{}'", cache_root.display()))?;
-    fs::create_dir_all(tk)?;
+    fs::create_dir_all(tk).map_err(|e| anyhow!("❌ could not create the cache folder '{}': {}", tk.display(), e))?;
     check_owned(tk)?;
     let lock_path = tk.join(format!("{}.lock", stem));
     // Every path rsxtk keeps under `.tk/<stem>`: a link at Cargo's target folder `t` would have the
@@ -456,6 +457,7 @@ fn lock_cache(cache_root: &Path, stem: &str) -> Result<fs::File> {
     for path in [
         lock_path.clone(), cache_root.to_path_buf(), cache_root.join("src"), cache_root.join("src/rsc"),
         cache_root.join("t"), cache_root.join(format!("{}.wasm", stem)), cache_root.join("source.id"),
+        cache_root.join("Cargo.lock"),
     ] { refuse_link(&path)?; }
     let file = fs::OpenOptions::new().create(true).truncate(false).write(true).open(&lock_path)
         .map_err(|e| anyhow!("❌ could not open the build lock '{}': {}", lock_path.display(), e))?;
@@ -467,7 +469,42 @@ fn lock_cache(cache_root: &Path, stem: &str) -> Result<fs::File> {
         }
         Err(fs::TryLockError::Error(e)) => bail!("❌ could not lock '{}': {}", lock_path.display(), e),
     }
+    private_cache(cache_root)?;
     Ok(file)
+}
+
+/// [linux-x64, linux-arm64, mac-x64, mac-arm64] `.tk/<stem>` is made the user's own and private
+/// (0700), so no one else can write the module it caches (re-review 16: in a setgid folder shared
+/// with a group, under umask 002, a group member planted a module and the user's run loaded it).
+/// A cache others COULD write (group- or world-writable) cannot be trusted, so it is removed and
+/// rebuilt — once; a 1.0.0 cache made under umask 022 (0755) is only tightened. Called with the
+/// build lock held. [win-x64, win-arm64] Created only: access is the folder's ACL.
+fn private_cache(cache_root: &Path) -> Result<()> {
+    let existed = cache_root.exists();
+    fs::create_dir_all(cache_root)
+        .map_err(|e| anyhow!("❌ could not create the cache folder '{}': {}", cache_root.display(), e))?;
+    #[cfg(not(unix))]
+    let _ = existed;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = fs::metadata(cache_root)?.permissions().mode();
+        // Changing the mode proves the folder is ours (it fails for anyone else, root aside).
+        let make_private = || fs::set_permissions(cache_root, fs::Permissions::from_mode(0o700)).map_err(|e| match e.raw_os_error() {
+            Some(1) => anyhow!("❌ '{}' is not yours ({}); remove it and run again.", cache_root.display(), e),
+            _ => anyhow!("❌ could not make '{}' private: {}", cache_root.display(), e),
+        });
+        make_private()?;
+        // A folder made just now (under umask 002 it is 0775) held nothing anyone could plant.
+        if existed && mode & 0o022 != 0 {
+            eprintln!("🔒 '{}' could be written by other users; rebuilding it as a private cache.", cache_root.display());
+            fs::remove_dir_all(cache_root)
+                .map_err(|e| anyhow!("❌ could not remove '{}' (other users could write it): {}. Remove it and run again.", cache_root.display(), e))?;
+            fs::create_dir(cache_root)?;
+            make_private()?;
+        }
+    }
+    Ok(())
 }
 
 /// An error when `path` is a symbolic link (on Windows also a junction); a missing path is fine.
@@ -488,13 +525,14 @@ fn check_owned(dir: &Path) -> Result<()> {
         use std::os::unix::fs::PermissionsExt;
         let perms = fs::metadata(dir)?.permissions();
         // World-writable: any user could plant links in it (re-review 15). Group-writable is
-        // allowed — Ubuntu's umask 002 makes the user's own folders 775 for their private group.
+        // allowed — Ubuntu's umask 002 makes the user's own folders 775 for their private group;
+        // what a group could plant is kept out by `private_cache` (re-review 16).
         if perms.mode() & 0o002 != 0 {
             bail!("❌ '{}' can be written by every user (mode {:o}); rsxtk will not build in it. Run: chmod o-w '{}'", dir.display(), perms.mode() & 0o7777, dir.display());
         }
         fs::set_permissions(dir, perms).map_err(|e| match e.raw_os_error() {
             Some(1) => anyhow!("❌ '{}' is not yours ({}); rsxtk will not build in another user's .tk folder. Remove it or run the script from a folder you own.", dir.display(), e),
-            _ => anyhow!("❌ could not check who owns '{}': {}", dir.display(), e),
+            _ => anyhow!("❌ could not check '{}' before building in it: {}", dir.display(), e),
         })?;
     }
     #[cfg(not(unix))]
@@ -681,9 +719,18 @@ fn hash_tree(dir: &Path, rel: &Path, h: &mut impl std::hash::Hasher) -> Result<(
         let name = rel.join(entry.file_name());
         name.hash(h);
         if entry.file_type()?.is_dir() { hash_tree(&entry.path(), &name, h)?; }
-        else { fs::read(entry.path())?.hash(h); }
+        else { read_resource(&entry.path())?.hash(h); }
     }
     Ok(())
+}
+
+/// One file of `rsc/`, read through a file link; a link to a FOLDER is named in the error (re-review
+/// 16: it was a bare "Is a directory (os error 21)", with no path).
+fn read_resource(path: &Path) -> Result<Vec<u8>> {
+    fs::read(path).map_err(|e| {
+        let hint = if path.is_dir() { " — a link to a folder in rsc/ is not supported; copy the folder in instead" } else { "" };
+        anyhow!("❌ could not read '{}': {}{}", path.display(), e, hint)
+    })
 }
 
 /// Copies `src` into `dst` recursively, replacing whatever `dst` held.
@@ -694,7 +741,7 @@ fn copy_dir_fresh(src: &Path, dst: &Path) -> Result<()> {
         let entry = entry?;
         let target = dst.join(entry.file_name());
         if entry.file_type()?.is_dir() { copy_dir_fresh(&entry.path(), &target)?; }
-        else { write_atomic(&target, &fs::read(entry.path())?)?; }
+        else { write_atomic(&target, &read_resource(&entry.path())?)?; }
     }
     Ok(())
 }
@@ -874,12 +921,14 @@ fn lock_dir() -> PathBuf {
 /// a folder made by someone else (there: a test) kept at 0755; a folder another user owns cannot
 /// be changed, which is an error, not a silent pass.
 fn create_private_dir(dir: &Path) -> std::io::Result<()> {
-    fs::create_dir_all(dir)?;
     // A link planted at the name (another user, in a shared temp folder) would have the chmod
     // below follow it to a folder of this user's (re-review 15): only a real folder is used.
-    if !fs::symlink_metadata(dir)?.is_dir() {
-        return Err(std::io::Error::other("it is a link or not a folder; remove it"));
-    }
+    // Checked before creating too, so a file or dangling link there gets this message, not
+    // "File exists" (re-review 16).
+    let not_a_folder = || std::io::Error::other("it is a link or not a folder; remove it");
+    if fs::symlink_metadata(dir).is_ok_and(|m| !m.is_dir()) { return Err(not_a_folder()); }
+    fs::create_dir_all(dir)?;
+    if !fs::symlink_metadata(dir)?.is_dir() { return Err(not_a_folder()); }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

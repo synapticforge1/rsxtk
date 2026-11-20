@@ -699,8 +699,11 @@ fn remove_of_an_absent_crate_never_adds_a_dependencies_table() {
 fn symlink(target: &str, link: &Path, is_dir: bool) {
     #[cfg(unix)]
     let made = { let _ = is_dir; std::os::unix::fs::symlink(target, link) };
+    // Windows resolves a link's target only with its own separator (a `../x` target did not).
     #[cfg(windows)]
-    let made = if is_dir { std::os::windows::fs::symlink_dir(target, link) } else { std::os::windows::fs::symlink_file(target, link) };
+    let target = target.replace('/', "\\");
+    #[cfg(windows)]
+    let made = if is_dir { std::os::windows::fs::symlink_dir(&target, link) } else { std::os::windows::fs::symlink_file(&target, link) };
     made.unwrap_or_else(|e| panic!("could not create the symlink {} ({}); on Windows turn on Developer Mode", link.display(), e));
 }
 
@@ -1034,6 +1037,54 @@ fn a_linked_lock_folder_is_refused() {
     assert_eq!(fs::metadata(&victim).unwrap().permissions().mode() & 0o777, 0o755, "the link was followed");
     assert_eq!(fs::read_dir(&victim).unwrap().count(), 0);
     assert_eq!(fs::read_to_string(dir.join("s.rs")).unwrap(), SCRIPT);
+    // A plain file at the name: the same named refusal, not a bare "File exists" (re-review 16).
+    fs::remove_file(cache.join("rsxtk").join("locks")).unwrap();
+    fs::write(cache.join("rsxtk").join("locks"), "").unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_rsxtk")).args(["add", "s.rs", "itoa", "1"])
+        .env("XDG_CACHE_HOME", &cache).current_dir(&dir).output().unwrap();
+    assert_fails(&out);
+    assert!(stderr(&out).contains("is a link or not a folder"), "{}", stderr(&out));
+}
+
+/// [linux-x64, linux-arm64] Each script's cache folder is private (0700), and one other users could
+/// write is removed and rebuilt, so nothing they planted is loaded (re-review 16: in a setgid
+/// folder shared with a group, a group member's planted module ran). A fresh cache says nothing.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_cache_others_could_write_is_rebuilt_private() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = workdir("tk_private_cache");
+    fs::write(dir.join("s.rs"), SCRIPT).unwrap();
+    let out = rsxtk(&dir, &["run", "s.rs"]);
+    assert_ok(&out);
+    assert!(!stderr(&out).contains("rebuilding"), "a fresh cache was called unsafe: {}", stderr(&out));
+    let cache = dir.join(".tk").join("s");
+    assert_eq!(fs::metadata(&cache).unwrap().permissions().mode() & 0o777, 0o700);
+    // As if a group member could write it: open it up and plant a module over the cached one.
+    fs::set_permissions(&cache, fs::Permissions::from_mode(0o775)).unwrap();
+    fs::write(cache.join("planted"), "x").unwrap();
+    fs::write(cache.join("s.wasm"), wat::parse_str(HELLO_WAT).unwrap()).unwrap();
+    let out = rsxtk(&dir, &["run", "s.rs"]);
+    assert_ok(&out);
+    assert!(stderr(&out).contains("rebuilding it as a private cache"), "{}", stderr(&out));
+    assert_eq!(stdout(&out), "script ran\n", "the planted module ran");
+    assert!(!cache.join("planted").exists());
+    assert_eq!(fs::metadata(&cache).unwrap().permissions().mode() & 0o777, 0o700);
+}
+
+/// A link to a FOLDER in `rsc/` stops the run with an error naming it (re-review 16: a bare "Is a
+/// directory" / "Access is denied" with no path).
+#[test]
+fn a_folder_link_in_rsc_is_named_in_the_error() {
+    let dir = workdir("rsc_folder_link");
+    fs::write(dir.join("s.rs"), SCRIPT).unwrap();
+    fs::create_dir_all(dir.join("rsc")).unwrap();
+    fs::create_dir_all(dir.join("real")).unwrap();
+    symlink("../real", &dir.join("rsc").join("sub"), true);
+    let out = rsxtk(&dir, &["run", "s.rs"]);
+    assert_fails(&out);
+    assert!(stderr(&out).contains("a link to a folder in rsc/ is not supported"), "{}", stderr(&out));
+    assert!(stderr(&out).contains("sub"), "{}", stderr(&out));
 }
 
 /// [linux-x64, linux-arm64] With no usable HOME, the lock folder is a per-user one in the temp
