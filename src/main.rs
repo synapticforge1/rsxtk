@@ -526,8 +526,10 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
         .map_err(|e| anyhow!("could not write '{}': {}", target.display(), e))?;
     // Bytes and permissions go through the open handle, never through the path again.
     let written = file.write_all(bytes)
-        .and_then(|_| match perms { Some(p) => file.set_permissions(p), None => Ok(()) })
-        .and_then(|_| { drop(file); fs::rename(&tmp, &target) });
+        .and_then(|_| match perms { Some(p) => file.set_permissions(p), None => Ok(()) });
+    // Closed on every path, so a failed write's temp can be removed on Windows too (re-review 4).
+    drop(file);
+    let written = written.and_then(|_| fs::rename(&tmp, &target));
     if let Err(e) = written {
         let _ = fs::remove_file(&tmp);
         return Err(anyhow!("could not write '{}': {}", target.display(), e));
@@ -972,14 +974,13 @@ fn check_version(version: &str) -> Result<()> {
 
 /// A Cargo version requirement (review 2, C3: `add x banana` wrote `x = "banana"` and said
 /// success), as Cargo's parser takes it (checked against `cargo metadata`, re-review 2): `*` / `x` /
-/// `X` alone, or comma-separated comparators — an optional `^ ~ = > >= < <=`, then
+/// `X` as the whole requirement, or comma-separated comparators — an optional `^ ~ = > >= < <=`, then
 /// MAJOR[.MINOR[.PATCH]] with no leading zeros, each fitting a u64, where a wildcard (`*` / `x` /
 /// `X`) may replace the parts after MAJOR but is never followed by a number, and an optional
 /// `-pre` / `+build` only on a full MAJOR.MINOR.PATCH (a numeric `pre` identifier has no leading zero).
 fn is_version_req(req: &str) -> bool {
     fn comparator(c: &str) -> bool {
         let c = c.trim();
-        if matches!(c, "*" | "x" | "X") { return true; }
         let c = [">=", "<=", "^", "~", "=", ">", "<"].iter()
             .find_map(|op| c.strip_prefix(op)).unwrap_or(c).trim_start();
         let (core, rest) = c.split_at(c.find(['-', '+']).unwrap_or(c.len()));
@@ -1003,7 +1004,8 @@ fn is_version_req(req: &str) -> bool {
             && (rest.is_empty() || (parts.len() == 3 && first_wild == parts.len()))
     }
     !req.trim().is_empty() && !req.chars().any(|c| c == '"' || c == '\\' || c.is_control())
-        && req.split(',').all(comparator)
+        // A bare wildcard only as the whole requirement: Cargo refuses `>=1,*` (re-review 4).
+        && (matches!(req.trim(), "*" | "x" | "X") || req.split(',').all(comparator))
 }
 
 /// The crate a manifest line declares (`name = …`, `name.workspace = …`, `"name" = …`), if any.

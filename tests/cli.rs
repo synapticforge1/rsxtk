@@ -601,7 +601,9 @@ fn add_accepts_only_cargo_version_requirements() {
     // a pre-release on a wildcard, and leading zeros.
     for bad in ["banana", "1.0 foo", "1..2", "v1", ">=", "1.2.3.4", "1.0-", "1.0+", "1.*.3", "1.2.x-rc", "1.0.0-01", "01.2",
         // Re-review 3: a tail needs MAJOR.MINOR.PATCH, and each number fits a u64.
-        "1-rc", "1.2-rc", "1.2+b", "18446744073709551616", "1.18446744073709551616"] {
+        "1-rc", "1.2-rc", "1.2+b", "18446744073709551616", "1.18446744073709551616",
+        // Re-review 4: a bare wildcard is a requirement only on its own.
+        ">=1,*", "*,*", "x, >=1"] {
         let out = rsxtk(&dir, &["add", "s.rs", "itoa", bad]);
         assert_fails(&out);
         assert!(stderr(&out).contains("not a valid version requirement"), "{}: {}", bad, stderr(&out));
