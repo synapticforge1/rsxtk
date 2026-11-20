@@ -170,7 +170,13 @@ export function entries(text: string): { all: Set<string>; required: Set<string>
       section = line.trim().replace(/:$/, "");
       continue;
     }
-    const item = line.match(/^ {2}(\S.*?)(?: {2,}(.*))?$/);
+    // An option line starts with `-` after any indent: clap indents a long-only option
+    // (`      --allow-write`) past the short ones, and the two-space pattern below missed it, so
+    // removing such an option read as a patch (found in the 0.6.0 review). Other items sit at two
+    // spaces; deeper lines elsewhere are wrapped descriptions.
+    const item = section === "Options"
+      ? line.match(/^ +(-\S.*?)(?: {2,}(.*))?$/)
+      : line.match(/^ {2}(\S.*?)(?: {2,}(.*))?$/);
     if (!item) continue;
     const [, name, desc = ""] = item;
     if (section === "Commands" && page === "rsxtk") {

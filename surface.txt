@@ -1,5 +1,5 @@
 ## rsxtk --help
-Usage: rsxtk <COMMAND>
+Usage: rsxtk [OPTIONS] <COMMAND>
 
 Commands:
   run       🏃 Run a WASI app or script
@@ -21,54 +21,64 @@ Commands:
   help      Print this message or the help of the given subcommand(s)
 
 Options:
-  -h, --help     Print help
-  -V, --version  Print version
+      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
+  -h, --help                     Print help
+  -V, --version                  Print version
 
 ## rsxtk run --help
 🏃 Run a WASI app or script
 
-Usage: rsxtk run <PATH>
+Usage: rsxtk run [OPTIONS] <PATH>
 
 Arguments:
   <PATH>  
 
 Options:
-  -h, --help  Print help
+      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
+  -h, --help                     Print help
 
 ## rsxtk mod --help
 🧩 Execute functions from a library
 
-Usage: rsxtk mod <PATH> [ARGS]...
+Usage: rsxtk mod [OPTIONS] <PATH> [ARGS]...
 
 Arguments:
   <PATH>     
   [ARGS]...  
 
 Options:
-  -h, --help  Print help
+      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
+  -h, --help                     Print help
 
 ## rsxtk csrun --help
 🚀 Native execution via 'cargo -Z script'
 
-Usage: rsxtk csrun <PATH>
+Usage: rsxtk csrun [OPTIONS] <PATH>
 
 Arguments:
   <PATH>  
 
 Options:
-  -h, --help  Print help
+      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
+  -h, --help                     Print help
 
 ## rsxtk build --help
 🔨 Build a universal .wasm or .wat file
 
-Usage: rsxtk build <PATH> <TARGET>
+Usage: rsxtk build [OPTIONS] <PATH> <TARGET>
 
 Arguments:
   <PATH>    
   <TARGET>  [possible values: wasi, wasm, wat]
 
 Options:
-  -h, --help  Print help
+      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
+  -h, --help                     Print help
 
 ## rsxtk convert --help
 🔄 Convert between .wasm and .wat
@@ -79,41 +89,49 @@ Arguments:
   <INPUT>  
 
 Options:
-  -o, --output <OUTPUT>  
-  -h, --help             Print help
+  -o, --output <OUTPUT>          
+      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
+  -h, --help                     Print help
 
 ## rsxtk init --help
 ✨ Init a new script template
 
-Usage: rsxtk init <NAME>
+Usage: rsxtk init [OPTIONS] <NAME>
 
 Arguments:
   <NAME>  
 
 Options:
-  -h, --help  Print help
+      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
+  -h, --help                     Print help
 
 ## rsxtk initmod --help
 📦 Init a new library module template
 
-Usage: rsxtk initmod <NAME>
+Usage: rsxtk initmod [OPTIONS] <NAME>
 
 Arguments:
   <NAME>  
 
 Options:
-  -h, --help  Print help
+      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
+  -h, --help                     Print help
 
 ## rsxtk resource --help
 📂 Create 'rsc' folder for local files
 
-Usage: rsxtk resource [PATH]
+Usage: rsxtk resource [OPTIONS] [PATH]
 
 Arguments:
   [PATH]  
 
 Options:
-  -h, --help  Print help
+      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
+  -h, --help                     Print help
 
 ## rsxtk bench --help
 ⏱️ Benchmark execution speed
@@ -125,12 +143,14 @@ Arguments:
 
 Options:
   -i, --iterations <ITERATIONS>  [default: 5]
+      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
   -h, --help                     Print help
 
 ## rsxtk add --help
 ➕ Add a dependency (Auto-injects manifest if missing)
 
-Usage: rsxtk add <PATH> <CRATE_NAME> [VERSION]
+Usage: rsxtk add [OPTIONS] <PATH> <CRATE_NAME> [VERSION]
 
 Arguments:
   <PATH>        
@@ -138,41 +158,49 @@ Arguments:
   [VERSION]     
 
 Options:
-  -h, --help  Print help
+      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
+  -h, --help                     Print help
 
 ## rsxtk remove --help
 ➖ Remove a dependency
 
-Usage: rsxtk remove <PATH> <CRATE_NAME>
+Usage: rsxtk remove [OPTIONS] <PATH> <CRATE_NAME>
 
 Arguments:
   <PATH>        
   <CRATE_NAME>  
 
 Options:
-  -h, --help  Print help
+      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
+  -h, --help                     Print help
 
 ## rsxtk list --help
 📦 List script dependencies
 
-Usage: rsxtk list <PATH>
+Usage: rsxtk list [OPTIONS] <PATH>
 
 Arguments:
   <PATH>  
 
 Options:
-  -h, --help  Print help
+      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
+  -h, --help                     Print help
 
 ## rsxtk fmt --help
 ✨ Format Rust code (Preflight check for manifests)
 
-Usage: rsxtk fmt <PATH>
+Usage: rsxtk fmt [OPTIONS] <PATH>
 
 Arguments:
   <PATH>  
 
 Options:
-  -h, --help  Print help
+      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
+  -h, --help                     Print help
 
 ## rsxtk optimize --help
 🧹 Optimize WASM via Walrus
@@ -180,25 +208,31 @@ Options:
 Usage: rsxtk optimize [OPTIONS] --input <INPUT>
 
 Options:
-  -i, --input <INPUT>    
-  -o, --output <OUTPUT>  
-  -h, --help             Print help
+  -i, --input <INPUT>            
+  -o, --output <OUTPUT>          
+      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
+  -h, --help                     Print help
 
 ## rsxtk clean --help
 🗑️ Wipe the .tk build cache
 
-Usage: rsxtk clean
+Usage: rsxtk clean [OPTIONS]
 
 Options:
-  -h, --help  Print help
+      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
+  -h, --help                     Print help
 
 ## rsxtk info --help
 📝 View WASM metadata (wasmtk style)
 
-Usage: rsxtk info <PATH>
+Usage: rsxtk info [OPTIONS] <PATH>
 
 Arguments:
   <PATH>  
 
 Options:
-  -h, --help  Print help
+      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
+  -h, --help                     Print help

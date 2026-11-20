@@ -106,6 +106,17 @@ test("commandsOf: the Commands section without help", () => {
   expect(commandsOf(TOP.split("\n").slice(1).join("\n"))).toEqual(["run", "build"]);
 });
 
+test("entries: a long-only option (indented past the short ones) is an entry; a wrapped line is not", () => {
+  // Found in the 0.6.0 review: `      --allow-write` was invisible, so removing it read as a patch.
+  const withLong = edit(BASE, "  -h, --help     Print help\n", "  -h, --help     Print help\n      --allow-write  Let the guest\n                     write its folder\n");
+  expect(entries(withLong).all.has("rsxtk option --allow-write")).toBe(true);
+  expect([...entries(withLong).all].filter((e) => e.includes("write its folder"))).toEqual([]);
+  expect(floorOf(BASE, withLong).kind).toBe("minor");
+  const f = floorOf(withLong, BASE);
+  expect(f.kind).toBe("major");
+  expect(f.reasons).toEqual(["removed: rsxtk option --allow-write"]);
+});
+
 test("floor: identical structure → patch, even when descriptions change", () => {
   expect(floorOf(BASE, BASE)).toEqual({ kind: "patch", reasons: [] });
   expect(floorOf(BASE, edit(BASE, "the script", "any script")).kind).toBe("patch");

@@ -34,3 +34,11 @@ copied in [best-practices-shared.md](best-practices-shared.md) (moved there 2026
   builds in its own target subdirectory (`scripts/compat.ts` `targetDir`). The mechanism (cargo
   keying the build by name and version, not folder) is the likely cause, not a measured one.
   [rsxtk, found 2026-11-12]
+- **R.6 A restored source must look NEWER than the build it replaces, and must be read and written
+  as UTF-8 bytes.** In the 0.6.0 review, mutants were made with PowerShell 5.1's `Get-Content -Raw`
+  (it decodes BOM-less UTF-8 as the ANSI code page: every emoji double-encoded) and the original put
+  back with `Copy-Item` (it keeps the file's OLD timestamp, so cargo kept the mutant's binary as
+  fresh). The next `surface` regeneration ran the stale mutant and wrote mojibake into the golden;
+  only an encoding check caught it. Read/write with `[IO.File]` and an explicit UTF-8 encoding (or
+  `cmd /c "git show … > file"` for exact bytes), and touch restored files before the next build.
+  [rsxtk, found 2026-11-20]
