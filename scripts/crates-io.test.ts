@@ -3,7 +3,7 @@
  * `readback` run as a child process against ONE mock server that plays both GitHub's OIDC token
  * endpoint and crates.io's API, recording every request. Run with `bun test scripts/`.
  */
-import { afterAll, beforeEach, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -69,6 +69,8 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "cio-test-"));
   writeFileSync(join(dir, "pkg.crate"), PACKAGE);
 });
+// Every test's folder is removed (re-review 14: ~300 `cio-test-*` folders were left in the temp folder).
+afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 async function run(cmd: string, extra: Record<string, string | null> = {}) {
   const env: Record<string, string> = {};

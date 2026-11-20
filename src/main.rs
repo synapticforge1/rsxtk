@@ -441,8 +441,8 @@ fn suggest_script_name(stem: &str) -> String {
 /// `build` or `info` of the same script waits — saying so — instead of racing on the mirror. No
 /// time limit: the holder is a Cargo build, which has none (owner, 2026-11-20).
 ///
-/// The `.tk` folder is checked first (open items before 1.0.1): a link INSIDE it — at `.tk/<stem>`,
-/// its `src` folder or the lock file, all rsxtk's own — is refused, since a build through it would
+/// The `.tk` folder is checked first (open items before 1.0.1): a link at any path rsxtk keeps in
+/// it — `.tk/<stem>`, its `src`, `src/rsc`, `t`, the cached module, `source.id`, the lock file — is refused, since a build through it would
 /// write (and later load a module from) wherever it points; and on Unix a `.tk` another user owns
 /// is refused, so a shared folder's cache cannot be swapped under the user. `.tk` itself may be a
 /// link (a cache on another drive), as long as on Unix the folder it names is the user's own.
@@ -451,7 +451,12 @@ fn lock_cache(cache_root: &Path, stem: &str) -> Result<fs::File> {
     fs::create_dir_all(tk)?;
     check_owned(tk)?;
     let lock_path = tk.join(format!("{}.lock", stem));
-    for path in [lock_path.as_path(), cache_root, &cache_root.join("src")] { refuse_link(path)?; }
+    // Every path rsxtk keeps under `.tk/<stem>`: a link at Cargo's target folder `t` would have the
+    // module built — and loaded — wherever it points (re-review 14).
+    for path in [
+        lock_path.clone(), cache_root.to_path_buf(), cache_root.join("src"), cache_root.join("src/rsc"),
+        cache_root.join("t"), cache_root.join(format!("{}.wasm", stem)), cache_root.join("source.id"),
+    ] { refuse_link(&path)?; }
     let file = fs::OpenOptions::new().create(true).truncate(false).write(true).open(&lock_path)
         .map_err(|e| anyhow!("❌ could not open the build lock '{}': {}", lock_path.display(), e))?;
     match file.try_lock() {

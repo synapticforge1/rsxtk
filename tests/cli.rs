@@ -800,6 +800,10 @@ fn a_link_in_the_tk_folder_is_refused() {
     symlink("../../evil", &dir.join(".tk").join("s").join("src"), true);
     refused(".tk/s/src");
     fs::remove_dir(dir.join(".tk").join("s").join("src")).or_else(|_| fs::remove_file(dir.join(".tk").join("s").join("src"))).unwrap();
+    // Cargo's target folder: a link there had the module built and loaded through it (re-review 14).
+    symlink("../../evil", &dir.join(".tk").join("s").join("t"), true);
+    refused(".tk/s/t");
+    fs::remove_dir(dir.join(".tk").join("s").join("t")).or_else(|_| fs::remove_file(dir.join(".tk").join("s").join("t"))).unwrap();
     // A dangling link at the lock file: following it would create the file it names.
     symlink("../evil/planted", &dir.join(".tk").join("s.lock"), false);
     refused(".tk/s.lock");
