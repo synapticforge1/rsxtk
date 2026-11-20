@@ -24,7 +24,8 @@ Updated: 2026-11-20, at the end of the session
 - Platforms passed (at cb2a6e7): win-x64, linux-x64 (Ubuntu 26.04.1 under WSL 2)
 
 ## Next
-1. The wasmrt switch, measured first (open-work 3).
+- Nothing scheduled; ask the owner. The wasmrt switch (open-work 3) waits until the owner says
+  wasmrt is ready (2026-11-20: much more work on wasmrt/wazmrt first).
 
 ## Waiting on owner
 - open-work 11: retire the old crates.io token.

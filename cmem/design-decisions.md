@@ -127,6 +127,9 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
 
 ## The wasmrt switch (planned, owner decisions)
 
+- 🔒 **Not yet (owner, 2026-11-20):** much more work on wasmrt/wazmrt comes before a decision; the
+  switch is not started or proposed until the owner says wasmrt is ready (open-work 3).
+
 - 🔒 rsxtk takes **wasmrt** by default through the native `wasmrt-core` rlib — no C ABI (owner;
   wasmrt `cmem/loaders.md`).
 - 🔒 2026-09-20: rsxtk and wasmtk receive the runtime slot **first**; the universalWasmLoader
