@@ -572,7 +572,8 @@ fn script_names_cargo_cannot_build_are_refused_by_init_and_run() {
     // Re-review 2: reserved names in any case (`Build.rs` IS `build.rs` on Windows / macOS), and
     // on Windows the device names (`nul`).
     let mut refused = vec!["2fib", "my.script", "build", "deps", "Build", "EXAMPLES"];
-    if cfg!(windows) { refused.extend(["nul", "CON", "com1"]); }
+    // Only `nul` never ran; CON, com1 and the other device names ran under 1.0.0 (re-review 3).
+    if cfg!(windows) { refused.extend(["nul", "NUL"]); }
     for name in refused {
         let out = rsxtk(&dir, &["init", name]);
         assert_fails(&out);
@@ -588,7 +589,7 @@ fn script_names_cargo_cannot_build_are_refused_by_init_and_run() {
     assert!(stderr(&hint).contains("'my_my_script.rs'"), "{}", stderr(&hint));
     assert_ok(&rsxtk(&dir, &["init", "my_my_script"]));
     // Names Cargo builds stay allowed — Rust keywords among them (measured: `fn`, `try` build).
-    for ok in ["my-tool", "fn", "try", "_x"] { assert_ok(&rsxtk(&dir, &["init", ok])); }
+    for ok in ["my-tool", "fn", "try", "_x", "CON", "com1"] { assert_ok(&rsxtk(&dir, &["init", ok])); }
 }
 
 #[test]
@@ -598,13 +599,15 @@ fn add_accepts_only_cargo_version_requirements() {
     fs::write(dir.join("s.rs"), SCRIPT).unwrap();
     // Re-review 2: checked against Cargo's own parser — it also refuses a number after a wildcard,
     // a pre-release on a wildcard, and leading zeros.
-    for bad in ["banana", "1.0 foo", "1..2", "v1", ">=", "1.2.3.4", "1.0-", "1.0+", "1.*.3", "1.2.x-rc", "1.0.0-01", "01.2"] {
+    for bad in ["banana", "1.0 foo", "1..2", "v1", ">=", "1.2.3.4", "1.0-", "1.0+", "1.*.3", "1.2.x-rc", "1.0.0-01", "01.2",
+        // Re-review 3: a tail needs MAJOR.MINOR.PATCH, and each number fits a u64.
+        "1-rc", "1.2-rc", "1.2+b", "18446744073709551616", "1.18446744073709551616"] {
         let out = rsxtk(&dir, &["add", "s.rs", "itoa", bad]);
         assert_fails(&out);
         assert!(stderr(&out).contains("not a valid version requirement"), "{}: {}", bad, stderr(&out));
     }
     assert_eq!(fs::read_to_string(dir.join("s.rs")).unwrap(), SCRIPT);
-    for good in ["1", "1.2", "^1.2.3", "~0.4", ">=1, <2", "*", "x", "X", "1.*", "1.2.x", "=1.0.0-alpha.1", "1.0.0+build.5", "1.0.0-rc.0"] {
+    for good in ["1", "1.2", "^1.2.3", "~0.4", ">=1, <2", "*", "x", "X", "1.*", "1.2.x", "=1.0.0-alpha.1", "1.0.0+build.5", "1.0.0-rc.0", "18446744073709551615"] {
         assert_ok(&rsxtk(&dir, &["add", "s.rs", "itoa", good]));
         assert!(fs::read_to_string(dir.join("s.rs")).unwrap().contains(&format!("itoa = \"{}\"", good)), "{}", good);
     }

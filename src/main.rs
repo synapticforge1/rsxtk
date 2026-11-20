@@ -406,12 +406,10 @@ fn stem_file_name(path: &Path) -> String {
 /// are allowed — refusing them would break names that work.
 fn check_script_name(stem: &str) -> Result<()> {
     const CARGO_RESERVED: &[&str] = &["build", "deps", "examples", "incremental"];
-    // [win-x64, win-arm64] Device names are not files (measured: `init nul` then `run nul.rs` failed
-    // with "os error 3"); refused on Windows, where they bite.
-    const WINDOWS_DEVICES: &[&str] = &[
-        "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
-        "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
-    ];
+    // [win-x64, win-arm64] Only `nul` is refused: measured on 1.0.0, `run nul.rs` failed with "os
+    // error 3", while con, prn, aux, com1-9 and lpt1-9 ran (with a Cargo warning). Refusing those
+    // would break scripts that work under 1.0.0 (re-review 3).
+    const WINDOWS_DEVICES: &[&str] = &["nul"];
     // Compared without case: on Windows and macOS `Build.rs` IS `build.rs` (re-review 2: `init
     // Build` passed and the file was then taken as a build script).
     let is = |list: &[&str]| list.iter().any(|r| r.eq_ignore_ascii_case(stem));
@@ -975,9 +973,9 @@ fn check_version(version: &str) -> Result<()> {
 /// A Cargo version requirement (review 2, C3: `add x banana` wrote `x = "banana"` and said
 /// success), as Cargo's parser takes it (checked against `cargo metadata`, re-review 2): `*` / `x` /
 /// `X` alone, or comma-separated comparators — an optional `^ ~ = > >= < <=`, then
-/// MAJOR[.MINOR[.PATCH]] with no leading zeros, where a wildcard (`*` / `x` / `X`) may replace the
-/// parts after MAJOR but is never followed by a number, and an optional `-pre` / `+build` only on
-/// a version without a wildcard (a numeric `pre` identifier has no leading zero).
+/// MAJOR[.MINOR[.PATCH]] with no leading zeros, each fitting a u64, where a wildcard (`*` / `x` /
+/// `X`) may replace the parts after MAJOR but is never followed by a number, and an optional
+/// `-pre` / `+build` only on a full MAJOR.MINOR.PATCH (a numeric `pre` identifier has no leading zero).
 fn is_version_req(req: &str) -> bool {
     fn comparator(c: &str) -> bool {
         let c = c.trim();
@@ -992,7 +990,8 @@ fn is_version_req(req: &str) -> bool {
         let (pre, build) = match rest.split_once('+') { Some((p, b)) => (p, Some(b)), None => (rest, None) };
         let tail_ok = (pre.is_empty() || pre.strip_prefix('-').is_some_and(pre_ok)) && build.is_none_or(build_ok);
         let parts: Vec<&str> = core.split('.').collect();
-        let number = |p: &str| !p.is_empty() && p.chars().all(|ch| ch.is_ascii_digit()) && no_leading_zero(p);
+        // Each number fits a u64, as in Cargo (re-review 3: `18446744073709551616` was taken).
+        let number = |p: &str| !p.is_empty() && p.chars().all(|ch| ch.is_ascii_digit()) && no_leading_zero(p) && p.parse::<u64>().is_ok();
         let wild = |p: &str| matches!(p, "*" | "x" | "X");
         let first_wild = parts.iter().position(|p| wild(p)).unwrap_or(parts.len());
         (1..=3).contains(&parts.len())
@@ -1000,7 +999,8 @@ fn is_version_req(req: &str) -> bool {
             && parts[1..first_wild].iter().all(|p| number(p))
             && parts[first_wild..].iter().all(|p| wild(p))
             && tail_ok
-            && (rest.is_empty() || first_wild == parts.len())
+            // A `-pre` / `+build` tail needs the full MAJOR.MINOR.PATCH (re-review 3: `1-rc` was taken).
+            && (rest.is_empty() || (parts.len() == 3 && first_wild == parts.len()))
     }
     !req.trim().is_empty() && !req.chars().any(|c| c == '"' || c == '\\' || c.is_control())
         && req.split(',').all(comparator)
