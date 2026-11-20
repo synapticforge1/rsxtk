@@ -6,8 +6,18 @@ code alone is not evidence), on the tree as it will be committed.
 ## The suite: `cargo test` (tests/cli.rs, 2026-10-23)
 
 ```
-CARGO_TARGET_DIR=<short NTFS dir> cargo test           # 75 pass, 0 ignored (2026-11-20, ~3 s)
+CARGO_TARGET_DIR=<short NTFS dir> cargo test           # win-x64 88 pass (2026-11-20, ~5 s)
 ```
+
+- **Counts (97a4277):** win-x64 88; linux-x64 adds the `#[cfg(target_os = "linux")]` tests (lock
+  folder mode, no-HOME lock folder, non-UTF-8 name, temp-name symlink). `bun test scripts/` 79.
+- **Symlink tests run on Windows too** and need Developer Mode (or admin); without it they FAIL,
+  saying so — never a silent pass. The temp-name test is Linux-only: Windows pids are not
+  sequential, so its pid window missed and it passed on the unfixed code there.
+- **`fmt`'s time limit** is tested with real rustfmt: 200 nested `vec!` keep it busy > 20 s;
+  `RSXTK_TEST_RUSTFMT_LIMIT_MS=1000` (debug builds only) makes the test take ~1 s.
+- **Inverting on Windows:** restore with `cmd /c "git show REV:src/main.rs > src\main.rs"` and
+  touch the file (best-practices R.6); a test of the old 120-s limit takes 2 minutes.
 
 - **End to end, one file.** Each test runs the real binary (`CARGO_BIN_EXE_rsxtk`) in its own
   fresh folder under `%TEMP%\rsxtk-tests\<test>` and checks stdout and the exit code. Inputs are
@@ -111,9 +121,10 @@ renormalize is refreshed by deleting it and `git checkout -- <file>`.
   already there, refused elsewhere, a bad read-back, a rejected ref; the page in H32's order
   (missing tag, tag elsewhere, existing page, POST rejected, draft read-back, tag moved by the
   POST, dry-run, no token); a stalled API hits the time limit; non-X.Y.Z refused.
-- `crates-io.test.ts` (14) — `has` / `token` / `revoke` / `readback` against one mock playing
+- `crates-io.test.ts` (17) — `has` / `token` / `revoke` / `readback` against one mock playing
   GitHub's OIDC endpoint and crates.io: the token masked and never printed, a refused exchange,
-  the read-back's polling, yanked = fatal.
+  the read-back's polling, yanked = fatal, a checksum other than `CRATE_FILE`'s (or none) = fatal,
+  no `CRATE_FILE` = fatal before any request.
 - `compat.test.ts` (10) — the CLI floor on hand-written `--help` pages: descriptions ignored;
   removed / renamed / reordered → major; a new required argument on an existing command → major;
   a new optional argument, option, value, or a whole new command → minor; the version helpers.

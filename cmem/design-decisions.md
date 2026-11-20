@@ -94,6 +94,30 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
   `refs/tags/rsxtk_v*` — no deletion, force-push or update. **The logo** was made with Gemini's help
   (owner); its terms were not verified by the review (not a finding).
 
+## Full review 2 (before 1.0.1) — decisions and the rules the fixes set (2026-11-20)
+
+- 🔒 **Publishing gate and tag creation: left as they are** (owner: "Leave as is", "Record as
+  accepted"). Any writer's push to main can publish; the `rsxtk_v*` ruleset has no `creation` rule
+  (CI refuses a version whose tag peels elsewhere).
+- **1.0.0's CLI is kept**: a guest's `proc_exit(N)` stays exit 1 + "Exited status: N"; of the
+  Windows device names only `nul` is refused (con, prn, aux, com1-9, lpt1-9 ran under 1.0.0).
+- **Script names are what Cargo builds** (letter or `_` first; letters, digits, `-`, `_`; not
+  build / deps / examples / incremental, in any case). Rust keywords build, so they are allowed.
+- **`add`'s version check is Cargo's grammar**, checked against `cargo metadata` (a tail needs a
+  full MAJOR.MINOR.PATCH; numbers fit a u64; a bare `*`/`x`/`X` only alone). Re-check it against
+  Cargo, not by reading, when it changes.
+- **Two writers:** `rewrite_script` writes THROUGH a link (only the user's named file: add, remove,
+  fmt, optimize without `-o`); `write_atomic` replaces whatever is at the name and never follows a
+  link, its temp made with `create_new` under a pid+time+attempt name. Every other output, the
+  `.tk` mirror included, goes through `write_atomic`.
+- **`.tk`**: a link INSIDE it is refused; `.tk` itself may be a link (a cache on another drive);
+  on Unix a `.tk` another user owns is refused (mode-unchanged chmod probe). Linux lock folder
+  with no usable HOME: `<temp>/rsxtk-locks-<uid>`.
+- **`rsc/` links are followed** (the user's own tree; refusing them would break 1.0.0) — README.
+- **The crates.io read-back compares checksums** with this commit's package; `cargo package` is
+  reproducible (1.0.0 repackaged = crates.io's checksum).
+- **Test-only knob:** a DEBUG build reads `RSXTK_TEST_RUSTFMT_LIMIT_MS`; release builds never do.
+
 ## The wasmrt switch (planned, owner decisions)
 
 - 🔒 rsxtk takes **wasmrt** by default through the native `wasmrt-core` rlib — no C ABI (owner;

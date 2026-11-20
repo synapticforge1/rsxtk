@@ -2,7 +2,7 @@
 
 Post-mortems stay in their home file; only the transferable rule comes here, as one bold sentence,
 the incident that paid for it, and the origin tag. Rules rsxtk pays for itself are appended under
-§ R with `[rsxtk]`. Last verified 2026-11-19.
+§ R with `[rsxtk]`. Last verified 2026-11-20.
 
 The workspace's convergent rules (★), cited here as "★ 2.4", "best-practices 7.22" and so on, are
 copied in [best-practices-shared.md](best-practices-shared.md) (moved there 2026-11-19, letter H38).
@@ -42,3 +42,11 @@ copied in [best-practices-shared.md](best-practices-shared.md) (moved there 2026
   only an encoding check caught it. Read/write with `[IO.File]` and an explicit UTF-8 encoding (or
   `cmd /c "git show … > file"` for exact bytes), and touch restored files before the next build.
   [rsxtk, found 2026-11-20]
+- **R.7 A validator that claims to match a tool is checked against that tool, never by reading.**
+  `add`'s version check was "re-done" by reading Cargo's grammar three times; each time a Cargo
+  oracle (`cargo metadata` on 100+ requirements) still found forms one side took and the other
+  refused (`x`, `1-rc`, u64 overflow, `>=1,*`). Run the oracle on every change. [rsxtk, 2026-11-20]
+- **R.8 A fix that refuses input must be measured against the last release first.** Refusing all
+  Windows device names looked safe; on 1.0.0, con / prn / aux / com / lpt scripts ran, so the
+  refusal was a break. Measure what the release did, then refuse only what never worked. [rsxtk,
+  2026-11-20]

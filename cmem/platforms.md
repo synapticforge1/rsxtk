@@ -53,6 +53,9 @@ the Rust host triple it was built and tested as.
   target dir lives on NTFS; `git` needs `safe.directory` (`working-rules.md` § Machine).
 - **Binaries:** two release builds of one source differ in the PE `TimeDateStamp` and `CheckSum`
   only (`testing.md` § Comparing binaries).
+- **Symlinks:** creating one needs Developer Mode (on here, 2026-11-20); the suite's symlink tests
+  need it. `FileType::is_symlink` is true for junctions too, so `.tk`'s link checks cover them.
+  Process ids are not sequential (a pid-window test cannot work here).
 
 ## Every platform
 

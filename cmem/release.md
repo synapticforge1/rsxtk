@@ -57,7 +57,9 @@ was not given.** Run from the repo root on `main`, with `CARGO_TARGET_DIR` on NT
      crates.io already lists the version; **crates.io trusted publishing** (owner's D2) — GitHub
      OIDC (audience `crates.io`) → `POST /api/v1/trusted_publishing/tokens` → a short-lived token;
      `cargo publish --locked --no-verify`; the token revoked (`DELETE`); then the read-back,
-     FATAL: crates.io serves X.Y.Z, not yanked (crates.io keeps no provenance attestation; it does
+     FATAL: crates.io serves X.Y.Z, not yanked, with the checksum of this commit's package
+     (`CRATE_FILE`; a re-run that skipped the publish repackages with `--no-verify` — reproducible,
+     measured on 1.0.0; added before 1.0.1) (crates.io keeps no provenance attestation; it does
      record `trustpub_data` — loader-rs measured it on 1.0.5).
    - **U9:** no `uses:`; Rust `nightly-2026-11-04` via the runner's rustup (signed manifests) —
      the local gate's nightly (the package CI verifies is built by the compiler the tests passed

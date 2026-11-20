@@ -43,3 +43,5 @@ Numbers are stable and never reused. Read only when the owner asks about past wo
   unchanged; `cargo audit` 0 vulnerabilities.
 - **16** — the first review under the final standard: complete at `4f2afa6`
   (`review-process.md` § Last review).
+- **15** — 1.0.0 released (owner: "Release as 1.0.0"); the README Breaking Changes table for 1.0.0
+  written (`1e75f45`, `868a4aa`), going out with 1.0.1.
