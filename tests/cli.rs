@@ -719,6 +719,25 @@ fn an_output_symlink_is_replaced_not_followed() {
     assert!(!fs::symlink_metadata(dir.join("out.wasm")).unwrap().file_type().is_symlink(), "the link was followed");
 }
 
+/// [linux-x64, linux-arm64] A symlink planted at a TEMPORARY name is never followed either: the
+/// old temp name `.<name>.rsxtk-<pid>.tmp` was predictable and opened with a plain write (re-review
+/// 3). Links at every pid-only name a run could use are planted; the victim file must stay intact.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_symlink_at_a_temporary_name_is_never_followed() {
+    let dir = workdir("r3_temp_link");
+    fs::write(dir.join("lib.wat"), LIB_WAT).unwrap();
+    fs::write(dir.join("victim.txt"), "keep me").unwrap();
+    // The child's pid is unknown before it starts, so cover a window of plausible pids.
+    let me = std::process::id();
+    for pid in me.saturating_sub(50)..me + 400 {
+        let _ = std::os::unix::fs::symlink("victim.txt", dir.join(format!(".out.wasm.rsxtk-{}.tmp", pid)));
+    }
+    assert_ok(&rsxtk(&dir, &["convert", "lib.wat", "-o", "out.wasm"]));
+    assert_eq!(fs::read_to_string(dir.join("victim.txt")).unwrap(), "keep me");
+    assert!(fs::read(dir.join("out.wasm")).unwrap().starts_with(b"\0asm"));
+}
+
 /// [linux-x64, linux-arm64] A script name that is not UTF-8 is a named error, not a panic (U2).
 #[cfg(target_os = "linux")]
 #[test]

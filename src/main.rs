@@ -345,12 +345,13 @@ fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<(PathBu
     };
     // A leftover file from the other kind would be built too, so remove it.
     let _ = fs::remove_file(cache_root.join(stale_file));
-    fs::write(cache_root.join("Cargo.toml"), format!("[package]\nname=\"{}\"\nversion=\"0.1.0\"\nedition=\"2021\"\n\n{}{}", stem, lib_section, manifest.trim()))?;
-    fs::write(cache_root.join(src_file), format!("\n{}", code))?;
+    // The mirror is written like every other output: never through a link planted in `.tk/`.
+    write_atomic(&cache_root.join("Cargo.toml"), format!("[package]\nname=\"{}\"\nversion=\"0.1.0\"\nedition=\"2021\"\n\n{}{}", stem, lib_section, manifest.trim()).as_bytes())?;
+    write_atomic(&cache_root.join(src_file), format!("\n{}", code).as_bytes())?;
 
     // Cargo runs build.rs from the package root. rsc/ goes under src/, so include_str!("rsc/…")
     // resolves as it does beside the script (and under `csrun`). Stale copies are removed.
-    if has_build_rs { fs::copy(&build_rs, &mirror_build_rs)?; }
+    if has_build_rs { write_atomic(&mirror_build_rs, &fs::read(&build_rs)?)?; }
     else { let _ = fs::remove_file(&mirror_build_rs); }
     if rsc_dir.is_dir() { copy_dir_fresh(&rsc_dir, &mirror_rsc)?; }
     else if mirror_rsc.exists() { fs::remove_dir_all(&mirror_rsc)?; }
@@ -486,9 +487,10 @@ fn split_manifest(content: &str) -> Result<Option<(String, String)>> {
     Ok(None)
 }
 
-/// Rewrites the user's own script in place (`add`, `remove`, `fmt`): a symlinked script is written
-/// THROUGH to its target, so the link stays a link (review 2, U1). Only for a file the user named
-/// to be edited — every other output goes through `write_atomic`, which never follows a link.
+/// Rewrites the user's own file in place (`add`, `remove`, `fmt`, `optimize` without `-o`): a
+/// symlinked file is written THROUGH to its target, so the link stays a link (review 2, U1). Only
+/// for a file the user named to be edited — every other output goes through `write_atomic`, which
+/// never follows a link.
 fn rewrite_script(path: &Path, bytes: &[u8]) -> Result<()> {
     let target = match fs::symlink_metadata(path) {
         Ok(m) if m.file_type().is_symlink() => fs::canonicalize(path)
@@ -504,14 +506,30 @@ fn rewrite_script(path: &Path, bytes: &[u8]) -> Result<()> {
 /// A symlink AT `path` is replaced, never followed: a link planted at an output name (the `.tk`
 /// cache, `build`'s or `convert`'s output) cannot redirect the write elsewhere (re-review 2).
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
     let target = path.to_path_buf();
     let name = target.file_name().ok_or_else(|| anyhow!("'{}' has no file name", target.display()))?;
-    let tmp = target.with_file_name(format!(".{}.rsxtk-{}.tmp", name.to_string_lossy(), std::process::id()));
     // Permissions of an existing REGULAR file only (symlink_metadata: a link's target is not read).
     let perms = fs::symlink_metadata(&target).ok().filter(|m| m.is_file()).map(|m| m.permissions());
-    let written = fs::write(&tmp, bytes)
-        .and_then(|_| match perms { Some(p) => fs::set_permissions(&tmp, p), None => Ok(()) })
-        .and_then(|_| fs::rename(&tmp, &target));
+    // The temporary file is created EXCLUSIVELY (`create_new`: an existing name — a planted
+    // symlink included — is refused, never followed) under a name that is unique per attempt
+    // (re-review 3: `fs::write` to a pid-only name followed a symlink planted at that name).
+    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let (mut file, tmp) = (0..32u32)
+        .find_map(|attempt| {
+            let tmp = target.with_file_name(format!(".{}.rsxtk-{}-{:x}-{}.tmp", name.to_string_lossy(), std::process::id(), stamp, attempt));
+            match fs::OpenOptions::new().write(true).create_new(true).open(&tmp) {
+                Ok(f) => Some(Ok((f, tmp))),
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => None,
+                Err(e) => Some(Err(e)),
+            }
+        })
+        .unwrap_or_else(|| Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "no free temporary name")))
+        .map_err(|e| anyhow!("could not write '{}': {}", target.display(), e))?;
+    // Bytes and permissions go through the open handle, never through the path again.
+    let written = file.write_all(bytes)
+        .and_then(|_| match perms { Some(p) => file.set_permissions(p), None => Ok(()) })
+        .and_then(|_| { drop(file); fs::rename(&tmp, &target) });
     if let Err(e) = written {
         let _ = fs::remove_file(&tmp);
         return Err(anyhow!("could not write '{}': {}", target.display(), e));
@@ -631,7 +649,7 @@ fn copy_dir_fresh(src: &Path, dst: &Path) -> Result<()> {
         let entry = entry?;
         let target = dst.join(entry.file_name());
         if entry.file_type()?.is_dir() { copy_dir_fresh(&entry.path(), &target)?; }
-        else { fs::copy(entry.path(), target)?; }
+        else { write_atomic(&target, &fs::read(entry.path())?)?; }
     }
     Ok(())
 }
@@ -1125,7 +1143,12 @@ fn optimize_wasm(engine: &Engine, input: &Path, output: Option<PathBuf>) -> Resu
         .map_err(|e| anyhow!("❌ '{}' is not a valid WebAssembly module: {}", input.display(), e))?;
     let mut module = walrus::Module::from_buffer(&bytes)?;
     // Without -o the input is replaced, as documented — atomically, so it is never half-written.
-    write_atomic(&output.unwrap_or_else(|| input.to_path_buf()), &module.emit_wasm())?;
+    match output {
+        Some(out) => write_atomic(&out, &module.emit_wasm())?,
+        // Without -o the user's own file is rewritten in place, a symlinked one through its link,
+        // as `add` / `fmt` do (re-review 3: it replaced the link with a file).
+        None => rewrite_script(input, &module.emit_wasm())?,
+    }
     Ok(())
 }
 
