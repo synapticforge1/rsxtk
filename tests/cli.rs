@@ -668,23 +668,95 @@ fn add_waits_for_the_scripts_lock() {
     // timing-dependent to test (it passed 3/3 on the unfixed code), so this holds the script's
     // lock itself and checks that `add` waits for it. The lock's name is rsxtk's
     // (`lock_script`): the same std `DefaultHasher` over the script's canonical path.
+    // Review NEW-3: it waited silently; now it says what it waits for.
     use std::hash::{Hash, Hasher};
     let dir = workdir("n3_lock");
     fs::write(dir.join("p.rs"), SCRIPT).unwrap();
     let mut h = std::collections::hash_map::DefaultHasher::new();
     fs::canonicalize(dir.join("p.rs")).unwrap().hash(&mut h);
-    let locks = std::env::temp_dir().join("rsxtk-locks");
+    let locks = lock_dir_like_rsxtk();
     fs::create_dir_all(&locks).unwrap();
     let held = fs::OpenOptions::new().create(true).truncate(false).write(true)
         .open(locks.join(format!("{:016x}.lock", h.finish()))).unwrap();
     held.lock().unwrap();
-    let mut child = Command::new(env!("CARGO_BIN_EXE_rsxtk")).args(["add", "p.rs", "itoa", "1"]).current_dir(&dir).spawn().unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_rsxtk")).args(["add", "p.rs", "itoa", "1"]).current_dir(&dir)
+        .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn().unwrap();
     std::thread::sleep(std::time::Duration::from_millis(1500));
     assert!(child.try_wait().unwrap().is_none(), "add finished while the script's lock was held");
     assert_eq!(fs::read_to_string(dir.join("p.rs")).unwrap(), SCRIPT);
     held.unlock().unwrap();
-    assert!(child.wait().unwrap().success());
+    let out = child.wait_with_output().unwrap();
+    assert_ok(&out);
+    assert!(stderr(&out).contains("waiting"), "no waiting message:\n{}", stderr(&out));
     assert!(fs::read_to_string(dir.join("p.rs")).unwrap().contains("itoa = \"1\""));
+}
+
+/// rsxtk's lock folder (`lock_dir` in src/main.rs), computed the same way.
+fn lock_dir_like_rsxtk() -> PathBuf {
+    #[cfg(target_os = "linux")]
+    {
+        let cache = std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from).filter(|p| p.is_absolute())
+            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")));
+        if let Some(cache) = cache { return cache.join("rsxtk").join("locks"); }
+    }
+    std::env::temp_dir().join("rsxtk-locks")
+}
+
+#[test]
+fn remove_refuses_an_entry_that_never_closes_and_keeps_the_file() {
+    // Review NEW-1: `serde = { version = "1"` without its `}` made `remove` drop every later line.
+    let dir = workdir("new1_unclosed");
+    let original = "---\n[dependencies]\nserde = { version = \"1\"\nrand = \"1\"\n\n[features]\nx = []\n---\nfn main() {}\n";
+    fs::write(dir.join("t.rs"), original).unwrap();
+    let out = rsxtk(&dir, &["remove", "t.rs", "serde"]);
+    assert_fails(&out);
+    assert!(stderr(&out).contains("never closes"), "{}", stderr(&out));
+    assert_eq!(fs::read_to_string(dir.join("t.rs")).unwrap(), original);
+}
+
+#[test]
+fn add_refuses_a_manifest_with_multi_line_strings_and_keeps_the_file() {
+    // Review NEW-2: a `"""…"""` value holding `[` left fragments behind or made a `[x]` line inside
+    // the string read as a table header.
+    let dir = workdir("new2_multiline");
+    let original = "---\n[dependencies]\nrand = \"1\"\n[package.metadata]\ndoc = \"\"\"\n[x]\n\"\"\"\n---\nfn main() {}\n";
+    fs::write(dir.join("t.rs"), original).unwrap();
+    let out = rsxtk(&dir, &["remove", "t.rs", "rand"]);
+    assert_fails(&out);
+    assert!(stderr(&out).contains("multi-line string"), "{}", stderr(&out));
+    assert_eq!(fs::read_to_string(dir.join("t.rs")).unwrap(), original);
+}
+
+#[test]
+fn add_and_remove_take_a_crates_sub_tables_with_it() {
+    // Review B7: `[dependencies.serde.features]` stayed behind as an orphan / conflicting table.
+    let dir = workdir("b7_subtable");
+    let original = "---\n[dependencies]\nanyhow = \"1\"\n\n[dependencies.serde]\nversion = \"1\"\n\n[dependencies.serde.features]\nx = 1\n---\nfn main() {}\n";
+    fs::write(dir.join("t.rs"), original).unwrap();
+    assert_ok(&rsxtk(&dir, &["remove", "t.rs", "serde"]));
+    assert_eq!(fs::read_to_string(dir.join("t.rs")).unwrap(), "---\n[dependencies]\nanyhow = \"1\"\n---\nfn main() {}\n");
+}
+
+const TWO_MEMORIES_WAT: &str = r#"(module
+  (memory $a 1)
+  (memory $b 1)
+  (func (export "grow_both") (param i32) (result i32)
+    (drop (memory.grow $a (local.get 0)))
+    (memory.grow $b (local.get 0))))
+"#;
+
+#[test]
+fn max_memory_is_one_budget_for_all_memories_together() {
+    // Review N1 (round 2): caps were per memory, so many memories passed the setting many times.
+    let dir = workdir("n1_total");
+    fs::write(dir.join("m.wat"), TWO_MEMORIES_WAT).unwrap();
+    // 600 pages = 37.5 MiB each: the first fits a 64 MiB budget, the second does not (-1).
+    let capped = rsxtk(&dir, &["--max-memory", "64", "mod", "m.wat", "grow_both", "600"]);
+    assert_ok(&capped);
+    assert_eq!(stdout(&capped).trim(), "-1");
+    let roomy = rsxtk(&dir, &["--max-memory", "128", "mod", "m.wat", "grow_both", "600"]);
+    assert_ok(&roomy);
+    assert_eq!(stdout(&roomy).trim(), "1");
 }
 
 const TABLE_WAT: &str = r#"(module

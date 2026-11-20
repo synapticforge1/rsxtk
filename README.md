@@ -114,7 +114,7 @@ rsxtk csrun my_script.rs
 | `clean` | `rsxtk clean` | Wipes the `.tk` build cache. |
 | `info` | `rsxtk info <file>` | Shows exported functions with their signatures, and whether the module uses WASI. |
 
-**The sandbox** (`run`, `mod`, `bench`): a guest sees its own folder as `.`, **read-only**, plus its arguments and stdio — never your environment variables. Pass `--allow-write` to let it create, change and delete files in that folder (for example `rsxtk run --allow-write report.rs`); keep modules from elsewhere in a folder of their own before you do. Each memory of a guest may grow to at most 4096 MiB; `--max-memory <MiB>` changes the cap. There is no time limit: a guest that loops forever runs until you stop it with Ctrl-C.
+**The sandbox** (`run`, `mod`, `bench`): a guest sees its own folder as `.`, **read-only**, plus its arguments and stdio — never your environment variables. Pass `--allow-write` to let it create, change and delete files in that folder (for example `rsxtk run --allow-write report.rs`); keep modules from elsewhere in a folder of their own before you do. All of a guest's memories and tables together may use at most 4096 MiB; `--max-memory <MiB>` changes that budget (a `memory.grow` or `table.grow` past it returns -1). There is no time limit: a guest that loops forever runs until you stop it with Ctrl-C.
 
 ---
 
@@ -184,7 +184,7 @@ When you run a `.rs` file, `rsxtk` creates a hidden virtual Cargo project in the
 
 ## 🔒 Privacy
 
-`rsxtk` collects nothing and sends no telemetry. Its one network request of its own is `rsxtk add <file> <crate>` without a version, which asks crates.io for that crate's latest version (sending the crate name and the User-Agent `rsxtk/<version> (+https://github.com/synapticforge1/rsxtk)`). Building a script runs `cargo`, which downloads the script's dependencies from crates.io as usual. Build output stays on your machine, in `.tk/` in the current folder; `rsxtk clean` removes it. `add`, `remove` and `fmt` take a lock per script — an empty file named by a hash of the script's path, in `rsxtk-locks` in your system temp folder — so two runs on one script never lose each other's edits.
+`rsxtk` collects nothing and sends no telemetry. Its one network request of its own is `rsxtk add <file> <crate>` without a version, which asks crates.io for that crate's latest version (sending the crate name and the User-Agent `rsxtk/<version> (+https://github.com/synapticforge1/rsxtk)`). Building a script runs `cargo`, which downloads the script's dependencies from crates.io as usual. Build output stays on your machine, in `.tk/` in the current folder; `rsxtk clean` removes it. `add`, `remove` and `fmt` take a lock per script — an empty file named by a hash of the script's path — so two runs on one script never lose each other's edits; a run that finds the script locked says so and gives up after 60 seconds. The lock files are kept, one per script you have edited, in a folder only you can use: `rsxtk-locks` in your temp folder on Windows and macOS, `~/.cache/rsxtk/locks` (or `$XDG_CACHE_HOME/rsxtk/locks`) on Linux. Delete that folder whenever no rsxtk run is active; `rsxtk clean` does not touch it.
 
 ---
 

@@ -4,7 +4,7 @@ use std::time::Instant;
 use anyhow::{Result, bail, anyhow};
 use clap::{Parser, Subcommand, ValueEnum};
 use serde_json::Value;
-use wasmtime::{Engine, Linker, Module, Store, StoreLimits, StoreLimitsBuilder, Val, Config, OptLevel};
+use wasmtime::{Engine, Linker, Module, ResourceLimiter, Store, Val, Config, OptLevel};
 use wasmtime_wasi::{FsPerms, WasiCtxBuilder};
 use wasmtime_wasi::p1::{self, WasiP1Ctx};
 
@@ -13,7 +13,7 @@ use wasmtime_wasi::p1::{self, WasiP1Ctx};
 struct Cli {
     #[command(subcommand)]
     command: Commands,
-    /// Largest size one guest memory may reach, in MiB (run, mod, bench)
+    /// Most host memory a guest's memories and tables may use together, in MiB (run, mod, bench)
     #[arg(long, global = true, default_value_t = 4096, value_parser = clap::value_parser!(u64).range(1..=1_048_576))]
     max_memory: u64,
     /// Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
@@ -22,7 +22,7 @@ struct Cli {
 }
 
 /// What a guest may use (owner, 2026-11-20): its folder read-only unless `--allow-write`, and a
-/// cap on each memory; no time limit.
+/// memory budget for all its memories and tables together; no time limit.
 #[derive(Clone, Copy)]
 struct Sandbox { allow_write: bool, max_memory_bytes: usize }
 
@@ -77,7 +77,34 @@ enum Commands {
 #[value(rename_all = "lowercase")]
 enum BuildTarget { Wasi, Wasm, Wat }
 
-struct MyState { wasi: WasiP1Ctx, limits: StoreLimits }
+struct MyState { wasi: WasiP1Ctx, budget: GuestBudget }
+
+/// One budget for EVERYTHING a guest grows: all its memories and all its tables, together
+/// (review N1: per-object caps let a module declaring 60 memories and 60 tables take 5.6 GB under a
+/// 64 MiB setting). A growth that would pass the budget is refused, so `memory.grow` / `table.grow`
+/// return -1 and an oversized declaration fails to instantiate.
+struct GuestBudget { limit: usize, used: usize }
+
+/// What one table element costs the host: a funcref / externref slot is one pointer.
+const TABLE_ELEMENT_BYTES: usize = std::mem::size_of::<usize>();
+
+impl GuestBudget {
+    fn take(&mut self, bytes: usize) -> bool {
+        match self.used.checked_add(bytes) {
+            Some(total) if total <= self.limit => { self.used = total; true }
+            _ => false,
+        }
+    }
+}
+
+impl ResourceLimiter for GuestBudget {
+    fn memory_growing(&mut self, current: usize, desired: usize, _max: Option<usize>) -> wasmtime::Result<bool> {
+        Ok(self.take(desired.saturating_sub(current)))
+    }
+    fn table_growing(&mut self, current: usize, desired: usize, _max: Option<usize>) -> wasmtime::Result<bool> {
+        Ok(self.take(desired.saturating_sub(current).saturating_mul(TABLE_ELEMENT_BYTES)))
+    }
+}
 
 /// A linker with WASI preview 1, and a store whose guest sees the module's folder as `.` —
 /// READ-ONLY unless `--allow-write` (review S1: a module saved into a shared folder could rewrite
@@ -90,14 +117,9 @@ fn new_store(engine: &Engine, module_path: &Path, sandbox: Sandbox) -> Result<(L
     builder.inherit_stdio().inherit_args();
     let perms = if sandbox.allow_write { FsPerms::ReadWrite } else { FsPerms::ReadOnly };
     builder.preopened_dir(module_path.parent().unwrap(), ".", perms)?;
-    // Tables are host memory too (review N1: `table.grow` took 19.5 GB under a 64 MiB cap): a
-    // table may hold at most max-memory / 16 elements, about the host bytes per element.
-    let limits = StoreLimitsBuilder::new()
-        .memory_size(sandbox.max_memory_bytes)
-        .table_elements(sandbox.max_memory_bytes / 16)
-        .build();
-    let mut store = Store::new(engine, MyState { wasi: builder.build_p1(), limits });
-    store.limiter(|state| &mut state.limits);
+    let budget = GuestBudget { limit: sandbox.max_memory_bytes, used: 0 };
+    let mut store = Store::new(engine, MyState { wasi: builder.build_p1(), budget });
+    store.limiter(|state| &mut state.budget);
     Ok((linker, store))
 }
 
@@ -532,7 +554,7 @@ fn edit_deps(path: &Path, crate_name: &str, version: Option<&str>) -> Result<()>
     let (manifest, code) = split_manifest(&content)?.unwrap_or_else(|| {
         (String::from("[dependencies]\n"), content.strip_prefix('\u{feff}').unwrap_or(&content).to_string())
     });
-    let edited = edit_manifest(&manifest, crate_name, version);
+    let edited = edit_manifest(&manifest, crate_name, version)?;
     if version.is_none() && edited.trim() == manifest.trim() {
         println!("ℹ️ '{}' is not in the [dependencies] of {}; nothing changed.", crate_name, path.display());
         return Ok(());
@@ -544,18 +566,71 @@ fn edit_deps(path: &Path, crate_name: &str, version: Option<&str>) -> Result<()>
 
 /// An exclusive lock on one script for as long as the returned file lives, so parallel `add`,
 /// `remove` and `fmt` runs on it queue instead of losing each other's edits (review N3). The lock
-/// is an empty file in the system temp folder, `rsxtk-locks/<hash of the script's full path>.lock`;
-/// it is kept afterwards, because deleting a lock file other processes may be waiting on races.
+/// is an empty file `<lock folder>/<hash of the script's full path>.lock`; it is kept afterwards,
+/// because deleting a lock file other processes may be waiting on races. A run that waits says so,
+/// and gives up after `LOCK_WAIT` naming the lock file (review NEW-3: it waited forever, silently).
 fn lock_script(path: &Path) -> Result<fs::File> {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     fs::canonicalize(path)?.hash(&mut h);
-    let dir = std::env::temp_dir().join("rsxtk-locks");
-    fs::create_dir_all(&dir)?;
-    let file = fs::OpenOptions::new().create(true).truncate(false).write(true)
-        .open(dir.join(format!("{:016x}.lock", h.finish())))?;
-    file.lock()?;
-    Ok(file)
+    let dir = lock_dir();
+    create_private_dir(&dir).map_err(|e| anyhow!("❌ could not create the lock folder '{}': {}", dir.display(), e))?;
+    let lock_path = dir.join(format!("{:016x}.lock", h.finish()));
+    let file = fs::OpenOptions::new().create(true).truncate(false).write(true).open(&lock_path)
+        .map_err(|e| anyhow!("❌ could not open the lock file '{}': {}", lock_path.display(), e))?;
+    let started = std::time::Instant::now();
+    let mut told = false;
+    loop {
+        match file.try_lock() {
+            Ok(()) => return Ok(file),
+            Err(fs::TryLockError::WouldBlock) => {
+                if !told {
+                    eprintln!("⏳ Another rsxtk run is editing {}; waiting (lock: {})", path.display(), lock_path.display());
+                    told = true;
+                }
+                if started.elapsed() >= LOCK_WAIT {
+                    bail!("❌ {} is still locked after {} s by another process (lock: {}); nothing changed.",
+                        path.display(), LOCK_WAIT.as_secs(), lock_path.display());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            Err(fs::TryLockError::Error(e)) => bail!("❌ could not lock '{}': {}", lock_path.display(), e),
+        }
+    }
+}
+
+/// How long `add` / `remove` / `fmt` wait for another run's lock on the same script.
+const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Where the lock files live: a folder only this user can use.
+/// [linux-x64, linux-arm64] `/tmp` is shared by every user, so a lock folder there could be
+/// pre-created or held by someone else (security re-review 2): the per-user cache folder is used
+/// (`$XDG_CACHE_HOME/rsxtk/locks`, else `~/.cache/rsxtk/locks`).
+/// [win-x64, win-arm64, mac-x64, mac-arm64] the temp folder is already per-user (`%TEMP%`, `$TMPDIR`).
+fn lock_dir() -> PathBuf {
+    #[cfg(target_os = "linux")]
+    {
+        let cache = std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from).filter(|p| p.is_absolute())
+            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")));
+        if let Some(cache) = cache { return cache.join("rsxtk").join("locks"); }
+    }
+    std::env::temp_dir().join("rsxtk-locks")
+}
+
+/// Creates `dir` (and its parents) if missing. [linux-*, mac-*] The folder itself gets mode 0700,
+/// so other local users cannot list which scripts were edited when (privacy re-review 2).
+fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        if let Some(parent) = dir.parent() { fs::create_dir_all(parent)?; }
+        match fs::DirBuilder::new().mode(0o700).create(dir) {
+            Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => return Err(e),
+            _ => return Ok(()),
+        }
+    }
+    #[cfg(not(unix))]
+    fs::create_dir_all(dir)
 }
 
 /// The manifest with `crate_name` removed from its `[dependencies]` table and, given a version,
@@ -564,8 +639,15 @@ fn lock_script(path: &Path) -> Result<fs::File> {
 /// entry spanning several lines (`x = { … \n … }`) is removed whole, and so is the table form
 /// `[dependencies.<crate>]` with its lines (review B6: it was left in place, so `add` wrote a
 /// duplicate key and `remove` removed nothing).
-fn edit_manifest(manifest: &str, crate_name: &str, version: Option<&str>) -> String {
+fn edit_manifest(manifest: &str, crate_name: &str, version: Option<&str>) -> Result<String> {
+    // The scanner reads one line at a time, so a TOML multi-line string (which may hold `[`, `#`
+    // or a line that looks like a table header) would be misread: refuse instead of guessing
+    // (review NEW-2). Dependency manifests do not need them.
+    if manifest.contains("\"\"\"") || manifest.contains("'''") {
+        bail!("❌ The manifest uses a multi-line string (\"\"\" or '''); rsxtk add/remove cannot edit it safely — edit it by hand.");
+    }
     let crate_table = format!("[dependencies.{}]", crate_name);
+    let crate_subtable = format!("[dependencies.{}.", crate_name);
     let mut out: Vec<String> = Vec::new();
     let mut in_deps = false;
     let mut has_deps = false;
@@ -576,14 +658,23 @@ fn edit_manifest(manifest: &str, crate_name: &str, version: Option<&str>) -> Str
         // The line without its comment (review N2: `[dependencies] # deps` was not recognised, and
         // a `[` inside a comment or a string threw the bracket count off and deleted later lines).
         let t = toml_code(line).trim();
-        if open_brackets > 0 { open_brackets += bracket_balance(t); continue; }
+        if open_brackets > 0 {
+            // A table header before the removed entry closed: the entry never closes. Refuse rather
+            // than drop every line up to the end (review NEW-1: `remove` ate the rest of the manifest).
+            if is_table_header(t) {
+                bail!("❌ The entry for '{}' opens a '{{' or '[' that never closes; edit the manifest by hand.", crate_name);
+            }
+            open_brackets += bracket_balance(t);
+            continue;
+        }
         if t.starts_with('[') { // a table header: `[x]` or `[[x]]`
             if in_deps { deps_end = Some(out.len()); }
             // `[dependencies.serde]`, `[ dependencies . "serde" ]` and the like name one table.
             let header: String = t.chars().filter(|c| *c != ' ' && *c != '"').collect();
             in_deps = header == "[dependencies]";
             if in_deps { deps_end = None; has_deps = true; }
-            in_crate_table = !crate_name.is_empty() && header == crate_table;
+            // The crate's own table and its sub-tables (`[dependencies.serde.features]`, review B7).
+            in_crate_table = !crate_name.is_empty() && (header == crate_table || header.starts_with(&crate_subtable));
             if !in_crate_table { out.push(line.to_string()); }
             continue;
         }
@@ -593,6 +684,9 @@ fn edit_manifest(manifest: &str, crate_name: &str, version: Option<&str>) -> Str
             continue;
         }
         out.push(line.to_string());
+    }
+    if open_brackets > 0 {
+        bail!("❌ The entry for '{}' opens a '{{' or '[' that never closes; edit the manifest by hand.", crate_name);
     }
     if in_deps { deps_end = Some(out.len()); }
     if let Some(v) = version {
@@ -607,7 +701,16 @@ fn edit_manifest(manifest: &str, crate_name: &str, version: Option<&str>) -> Str
     } else if !has_deps {
         out.insert(0, "[dependencies]".to_string());
     }
-    out.join("\n")
+    Ok(out.join("\n"))
+}
+
+/// A TOML table header line (comment already removed): `[name]` or `[[name]]`, where the name is
+/// keys and dots — not an inline array such as `["derive"]`.
+fn is_table_header(code: &str) -> bool {
+    let inner = code.trim_start_matches('[').trim_end_matches(']');
+    code.starts_with('[') && code.ends_with(']') && !inner.is_empty()
+        && inner.chars().all(|c| c.is_alphanumeric() || "_-. \"'".contains(c))
+        && !inner.contains(", ")
 }
 
 /// Opening minus closing `{` / `[` brackets on a manifest line, outside strings and comments.

@@ -21,7 +21,7 @@ Commands:
   help      Print this message or the help of the given subcommand(s)
 
 Options:
-      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --max-memory <MAX_MEMORY>  Most host memory a guest's memories and tables may use together, in MiB (run, mod, bench) [default: 4096]
       --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
   -h, --help                     Print help
   -V, --version                  Print version
@@ -35,7 +35,7 @@ Arguments:
   <PATH>  
 
 Options:
-      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --max-memory <MAX_MEMORY>  Most host memory a guest's memories and tables may use together, in MiB (run, mod, bench) [default: 4096]
       --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
   -h, --help                     Print help
 
@@ -49,7 +49,7 @@ Arguments:
   [ARGS]...  
 
 Options:
-      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --max-memory <MAX_MEMORY>  Most host memory a guest's memories and tables may use together, in MiB (run, mod, bench) [default: 4096]
       --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
   -h, --help                     Print help
 
@@ -62,7 +62,7 @@ Arguments:
   <PATH>  
 
 Options:
-      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --max-memory <MAX_MEMORY>  Most host memory a guest's memories and tables may use together, in MiB (run, mod, bench) [default: 4096]
       --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
   -h, --help                     Print help
 
@@ -76,7 +76,7 @@ Arguments:
   <TARGET>  [possible values: wasi, wasm, wat]
 
 Options:
-      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --max-memory <MAX_MEMORY>  Most host memory a guest's memories and tables may use together, in MiB (run, mod, bench) [default: 4096]
       --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
   -h, --help                     Print help
 
@@ -90,7 +90,7 @@ Arguments:
 
 Options:
   -o, --output <OUTPUT>          
-      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --max-memory <MAX_MEMORY>  Most host memory a guest's memories and tables may use together, in MiB (run, mod, bench) [default: 4096]
       --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
   -h, --help                     Print help
 
@@ -103,7 +103,7 @@ Arguments:
   <NAME>  
 
 Options:
-      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --max-memory <MAX_MEMORY>  Most host memory a guest's memories and tables may use together, in MiB (run, mod, bench) [default: 4096]
       --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
   -h, --help                     Print help
 
@@ -116,7 +116,7 @@ Arguments:
   <NAME>  
 
 Options:
-      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --max-memory <MAX_MEMORY>  Most host memory a guest's memories and tables may use together, in MiB (run, mod, bench) [default: 4096]
       --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
   -h, --help                     Print help
 
@@ -129,7 +129,7 @@ Arguments:
   [PATH]  
 
 Options:
-      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --max-memory <MAX_MEMORY>  Most host memory a guest's memories and tables may use together, in MiB (run, mod, bench) [default: 4096]
       --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
   -h, --help                     Print help
 
@@ -143,7 +143,7 @@ Arguments:
 
 Options:
   -i, --iterations <ITERATIONS>  [default: 5]
-      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --max-memory <MAX_MEMORY>  Most host memory a guest's memories and tables may use together, in MiB (run, mod, bench) [default: 4096]
       --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
   -h, --help                     Print help
 
@@ -158,7 +158,7 @@ Arguments:
   [VERSION]     
 
 Options:
-      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --max-memory <MAX_MEMORY>  Most host memory a guest's memories and tables may use together, in MiB (run, mod, bench) [default: 4096]
       --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
   -h, --help                     Print help
 
@@ -172,7 +172,7 @@ Arguments:
   <CRATE_NAME>  
 
 Options:
-      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --max-memory <MAX_MEMORY>  Most host memory a guest's memories and tables may use together, in MiB (run, mod, bench) [default: 4096]
       --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
   -h, --help                     Print help
 
@@ -185,7 +185,7 @@ Arguments:
   <PATH>  
 
 Options:
-      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --max-memory <MAX_MEMORY>  Most host memory a guest's memories and tables may use together, in MiB (run, mod, bench) [default: 4096]
       --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
   -h, --help                     Print help
 
@@ -198,7 +198,7 @@ Arguments:
   <PATH>  
 
 Options:
-      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --max-memory <MAX_MEMORY>  Most host memory a guest's memories and tables may use together, in MiB (run, mod, bench) [default: 4096]
       --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
   -h, --help                     Print help
 
@@ -210,7 +210,7 @@ Usage: rsxtk optimize [OPTIONS] --input <INPUT>
 Options:
   -i, --input <INPUT>            
   -o, --output <OUTPUT>          
-      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --max-memory <MAX_MEMORY>  Most host memory a guest's memories and tables may use together, in MiB (run, mod, bench) [default: 4096]
       --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
   -h, --help                     Print help
 
@@ -220,7 +220,7 @@ Options:
 Usage: rsxtk clean [OPTIONS]
 
 Options:
-      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --max-memory <MAX_MEMORY>  Most host memory a guest's memories and tables may use together, in MiB (run, mod, bench) [default: 4096]
       --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
   -h, --help                     Print help
 
@@ -233,6 +233,6 @@ Arguments:
   <PATH>  
 
 Options:
-      --max-memory <MAX_MEMORY>  Largest size one guest memory may reach, in MiB (run, mod, bench) [default: 4096]
+      --max-memory <MAX_MEMORY>  Most host memory a guest's memories and tables may use together, in MiB (run, mod, bench) [default: 4096]
       --allow-write              Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
   -h, --help                     Print help
