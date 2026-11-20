@@ -110,9 +110,14 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
   fmt, optimize without `-o`); `write_atomic` replaces whatever is at the name and never follows a
   link, its temp made with `create_new` under a pid+time+attempt name. Every other output, the
   `.tk` mirror included, goes through `write_atomic`.
-- **`.tk`**: a link INSIDE it is refused; `.tk` itself may be a link (a cache on another drive);
-  on Unix a `.tk` another user owns is refused (mode-unchanged chmod probe). Linux lock folder
-  with no usable HOME: `<temp>/rsxtk-locks-<uid>`.
+- **`.tk`**: a link at the paths rsxtk keeps in it is refused; `.tk` itself may be a link (a cache
+  on another drive); on Unix a `.tk` another user owns or every user may write is refused, and
+  `.tk/<stem>` is created 0700 and kept 0700 (an existing open one is removed, then tightened —
+  fail closed). Linux lock folder with no usable HOME: `<temp>/rsxtk-locks-<uid>`; a link at the
+  lock folder's name is refused.
+- **Threat model (re-review 17):** whoever can write the folder a script lives in can edit it or add
+  a `build.rs` (native code), so swap races by such a user are out of scope; the `.tk` checks are
+  defence in depth, and the README says a shared folder is not made safe.
 - **`rsc/` links are followed** (the user's own tree; refusing them would break 1.0.0) — README.
 - **The crates.io read-back compares checksums** with this commit's package; `cargo package` is
   reproducible (1.0.0 repackaged = crates.io's checksum).

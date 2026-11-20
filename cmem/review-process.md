@@ -22,12 +22,14 @@ item lists word for word plus the scope; they are not copied here.
 
 ## Last review
 
-- Review complete: 63d71b6
-- For 0.6.0, 2026-11-20 (owner: "review"); scope `rsxtk_v0.5.2..264b408`, branch `review/0.6.0`.
-  First review 22 findings (basic 4, hardening 14 — one of them, H7, rejected by the owner's
-  decision — security 2, privacy 2, licensing 0) + 1 owner question; the five re-review rounds found
-  12 more (basic 5, hardening 7) and were fixed; the last re-review of every class was empty. Counts only — the issues stay in
-  the gitignored `review-issues.md`. Owner decisions in `design-decisions.md` § Review 0.6.0.
+- Review complete: cb2a6e7
+- For 1.0.1, 2026-11-20 (owner: "do a full review one more time before releasing", then "scope
+  the open items and fix them before the release"); full review 2 of `rsxtk_v1.0.0..868a4aa` and
+  every later fix, branch `review/1.0.1`. The five classes, then re-reviews 10–19 until the last
+  was empty; win-x64 and linux-x64 (WSL 2 Ubuntu 26.04.1) full suites passed at cb2a6e7 (cargo 89 /
+  96, bun 79, every gate). Owner decisions and the rules the fixes set: `design-decisions.md`
+  § Full review 2. Issues stay in the gitignored `review-issues.md`.
+- Before it: 0.6.0 → 1.0.0 (Review complete 940e335 / record 63d71b6).
 - Full suite once on win-x64 at 4f2afa6 (Windows 11, nightly-2026-11-04): release build, clippy 0,
   `cargo test` 75/75, `bun test scripts/` 73/73, check-privacy, check-licences (269), `cargo audit`
   0 vulnerabilities, check-cmem. `compat.ts --release` runs at the bump (it refuses an already
