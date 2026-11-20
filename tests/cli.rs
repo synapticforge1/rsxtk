@@ -993,6 +993,49 @@ fn lock_dir_like_rsxtk() -> PathBuf {
     std::env::temp_dir().join("rsxtk-locks")
 }
 
+/// [linux-x64, linux-arm64] A world-writable `.tk` is refused — any user could plant links in it —
+/// and a group-writable one (Ubuntu's umask 002) is not (re-review 15).
+#[cfg(target_os = "linux")]
+#[test]
+fn a_world_writable_tk_folder_is_refused() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = workdir("tk_world_writable");
+    fs::write(dir.join("s.rs"), SCRIPT).unwrap();
+    fs::create_dir_all(dir.join(".tk")).unwrap();
+    fs::set_permissions(dir.join(".tk"), fs::Permissions::from_mode(0o777)).unwrap();
+    let out = rsxtk(&dir, &["run", "s.rs"]);
+    assert_fails(&out);
+    assert!(stderr(&out).contains("can be written by every user"), "{}", stderr(&out));
+    assert_eq!(fs::read_dir(dir.join(".tk")).unwrap().count(), 0, "something was built in it");
+    fs::set_permissions(dir.join(".tk"), fs::Permissions::from_mode(0o775)).unwrap();
+    let out = rsxtk(&dir, &["run", "s.rs"]);
+    assert_ok(&out);
+    assert_eq!(stdout(&out), "script ran\n");
+}
+
+/// [linux-x64, linux-arm64] A link planted at the lock folder's name is refused, and the folder it
+/// names keeps its mode (re-review 15: rsxtk followed it and chmod-ed the user's folder to 0700).
+#[cfg(target_os = "linux")]
+#[test]
+fn a_linked_lock_folder_is_refused() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = workdir("lock_folder_link");
+    fs::write(dir.join("s.rs"), SCRIPT).unwrap();
+    let victim = dir.join("victim");
+    fs::create_dir_all(&victim).unwrap();
+    fs::set_permissions(&victim, fs::Permissions::from_mode(0o755)).unwrap();
+    let cache = dir.join("cache");
+    fs::create_dir_all(cache.join("rsxtk")).unwrap();
+    std::os::unix::fs::symlink(&victim, cache.join("rsxtk").join("locks")).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_rsxtk")).args(["add", "s.rs", "itoa", "1"])
+        .env("XDG_CACHE_HOME", &cache).current_dir(&dir).output().unwrap();
+    assert_fails(&out);
+    assert!(stderr(&out).contains("is a link or not a folder"), "{}", stderr(&out));
+    assert_eq!(fs::metadata(&victim).unwrap().permissions().mode() & 0o777, 0o755, "the link was followed");
+    assert_eq!(fs::read_dir(&victim).unwrap().count(), 0);
+    assert_eq!(fs::read_to_string(dir.join("s.rs")).unwrap(), SCRIPT);
+}
+
 /// [linux-x64, linux-arm64] With no usable HOME, the lock folder is a per-user one in the temp
 /// folder, `rsxtk-locks-<uid>` (open items before 1.0.1: one shared `/tmp/rsxtk-locks`, made 0700
 /// by the first user, blocked every other user). TMPDIR points it into this test's own folder.

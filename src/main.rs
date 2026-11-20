@@ -478,16 +478,24 @@ fn refuse_link(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// [linux-x64, linux-arm64, mac-x64, mac-arm64] An error when this user cannot change `dir`'s mode
-/// — it belongs to someone else. Setting the mode it already has changes nothing and fails only
+/// [linux-x64, linux-arm64, mac-x64, mac-arm64] An error when every user may write `dir`, or when
+/// this user cannot change its mode — it belongs to someone else. Setting the mode it already has changes nothing and fails only
 /// for a non-owner (root may change any). [win-x64, win-arm64] Not checked: a folder's access is
 /// its ACL, which the folder's owner set.
 fn check_owned(dir: &Path) -> Result<()> {
     #[cfg(unix)]
     {
+        use std::os::unix::fs::PermissionsExt;
         let perms = fs::metadata(dir)?.permissions();
-        fs::set_permissions(dir, perms).map_err(|e| anyhow!(
-            "❌ '{}' is not yours ({}); rsxtk will not build in another user's .tk folder. Remove it or run the script from a folder you own.", dir.display(), e))?;
+        // World-writable: any user could plant links in it (re-review 15). Group-writable is
+        // allowed — Ubuntu's umask 002 makes the user's own folders 775 for their private group.
+        if perms.mode() & 0o002 != 0 {
+            bail!("❌ '{}' can be written by every user (mode {:o}); rsxtk will not build in it. Run: chmod o-w '{}'", dir.display(), perms.mode() & 0o7777, dir.display());
+        }
+        fs::set_permissions(dir, perms).map_err(|e| match e.raw_os_error() {
+            Some(1) => anyhow!("❌ '{}' is not yours ({}); rsxtk will not build in another user's .tk folder. Remove it or run the script from a folder you own.", dir.display(), e),
+            _ => anyhow!("❌ could not check who owns '{}': {}", dir.display(), e),
+        })?;
     }
     #[cfg(not(unix))]
     let _ = dir;
@@ -867,6 +875,11 @@ fn lock_dir() -> PathBuf {
 /// be changed, which is an error, not a silent pass.
 fn create_private_dir(dir: &Path) -> std::io::Result<()> {
     fs::create_dir_all(dir)?;
+    // A link planted at the name (another user, in a shared temp folder) would have the chmod
+    // below follow it to a folder of this user's (re-review 15): only a real folder is used.
+    if !fs::symlink_metadata(dir)?.is_dir() {
+        return Err(std::io::Error::other("it is a link or not a folder; remove it"));
+    }
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
