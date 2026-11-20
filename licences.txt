@@ -143,7 +143,6 @@ rand_core 0.10.1	MIT OR Apache-2.0
 regalloc2 0.15.3	Apache-2.0 WITH LLVM-exception
 reqwest 0.13.1	MIT OR Apache-2.0
 ring 0.17.14	Apache-2.0 AND ISC
-rsxtk 0.5.2	MIT OR Apache-2.0
 rustc-demangle 0.1.28	MIT/Apache-2.0
 rustc-hash 2.1.1	Apache-2.0 OR MIT
 rustix 1.1.6	Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT

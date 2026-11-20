@@ -56,3 +56,9 @@ test("the inventory is sorted, one line per package", () => {
   const text = inventory([pkg("zeta", "MIT"), pkg("alpha", null, "COPYING")]);
   expect(text.split("\n").slice(1, 3)).toEqual(["alpha 1.0.0\tlicense-file: COPYING", "zeta 1.0.0\tMIT"]);
 });
+
+test("rsxtk itself is not in the inventory, so a version bump never makes it stale", () => {
+  const at = (version: string) => inventory([pkg("itoa", "MIT"), { ...pkg("rsxtk", "MIT OR Apache-2.0"), version }]);
+  expect(at("0.5.2").split("\n").filter((l) => l.startsWith("rsxtk "))).toEqual([]);
+  expect(at("1.0.0")).toBe(at("0.5.2"));
+});

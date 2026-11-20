@@ -100,9 +100,14 @@ export interface Pkg {
   license_file: string | null;
 }
 
-/** The inventory text: one sorted line per package, `name version<TAB>licence`. */
-export function inventory(pkgs: readonly Pkg[]): string {
+/**
+ * The inventory text: one sorted line per DEPENDENCY, `name version<TAB>licence`. rsxtk itself is
+ * left out (its licence is checked by `problems`): with it, every version bump made the inventory
+ * stale, and the bump commit may change only Cargo.toml and Cargo.lock — found at the 1.0.0 release.
+ */
+export function inventory(pkgs: readonly Pkg[], own = "rsxtk"): string {
   const lines = pkgs
+    .filter((p) => p.name !== own)
     .map((p) => `${p.name} ${p.version}\t${p.license ?? `license-file: ${p.license_file ?? "NONE"}`}`)
     .sort();
   return `# rsxtk's dependency licences, from Cargo.lock (bun scripts/check-licences.ts --write)\n${lines.join("\n")}\n`;
