@@ -28,7 +28,7 @@ Updated: 2026-11-20, at the end of the session
   wasmrt is ready (2026-11-20: much more work on wasmrt/wazmrt first).
 
 ## Waiting on owner
-- open-work 11: retire the old crates.io token.
+- open-work 11: revoke the old API token on crates.io (the GitHub secret is deleted).
 - The test machines for the platforms marked `pending` in `platforms.md`.
 
 ## Read next

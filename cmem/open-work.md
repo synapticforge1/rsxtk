@@ -12,4 +12,6 @@ reused; closed items are in [archive/open-work-closed.md](archive/open-work-clos
 - **11. 🗓️ OWNER — retire the old crates.io token** (D2, letter H33; added 2026-11-12): trusted
   publishing is registered and MEASURED (0.5.2's `trustpub_data`, `release.md`), so nothing uses
   the repo secret `CARGO_REGISTRY_TOKEN` any more: delete it (GitHub → Settings → Secrets and
-  variables → Actions) and revoke that API token on crates.io.
+  variables → Actions) and revoke that API token on crates.io. **GitHub secret deleted (owner,
+  2026-11-20; not readable without auth, so not verified here).** Left: revoke the token on
+  crates.io (Account Settings → API Tokens).
