@@ -739,6 +739,17 @@ fn single_quoted_crate_tables_are_the_crates_too() {
 }
 
 #[test]
+fn a_single_quoted_dependency_key_is_the_same_crate() {
+    // Review B9: `'serde' = "1"` was not matched: `add serde 2` wrote a second serde key.
+    let dir = workdir("b9_single_quoted_key");
+    fs::write(dir.join("u.rs"), "---\n[dependencies]\n'serde' = \"1\"\nitoa = \"1\"\n---\nfn main() {}\n").unwrap();
+    assert_ok(&rsxtk(&dir, &["add", "u.rs", "serde", "2"]));
+    assert_eq!(fs::read_to_string(dir.join("u.rs")).unwrap(), "---\n[dependencies]\nitoa = \"1\"\nserde = \"2\"\n---\nfn main() {}\n");
+    assert_ok(&rsxtk(&dir, &["remove", "u.rs", "serde"]));
+    assert_eq!(fs::read_to_string(dir.join("u.rs")).unwrap(), "---\n[dependencies]\nitoa = \"1\"\n---\nfn main() {}\n");
+}
+
+#[test]
 fn add_and_remove_take_a_crates_sub_tables_with_it() {
     // Review B7: `[dependencies.serde.features]` stayed behind as an orphan / conflicting table.
     let dir = workdir("b7_subtable");

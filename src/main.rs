@@ -778,7 +778,8 @@ fn check_version(version: &str) -> Result<()> {
 /// Exact, so `serde` does not match `serde_json`.
 fn dep_key(line: &str) -> Option<&str> {
     if !line.contains('=') { return None; }
-    let key = line.split(['=', '.']).next()?.trim().trim_matches('"');
+    // Both TOML key quotes: `"serde" = …` and `'serde' = …` (review B9: `'` was not trimmed).
+    let key = line.split(['=', '.']).next()?.trim().trim_matches(['"', '\'']);
     (!key.is_empty()).then_some(key)
 }
 
