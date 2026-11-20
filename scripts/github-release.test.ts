@@ -32,7 +32,10 @@ let state: {
   stall: boolean;
   refStatus: number; // POST git/refs
   newRefPointsElsewhere: boolean;
+  readme: string | null; // README.md at SHA (contents API), null = 404
 };
+
+const README_OK = "# rsxtk\n\nTested on: Windows 11 (win-x64)\n\nText.\n";
 let hits: Hit[];
 
 const server = Bun.serve({
@@ -57,6 +60,12 @@ const server = Bun.serve({
       if (state.refStatus === 201) state.tag = "annotated";
       return Response.json({ ref: body.ref }, { status: state.refStatus });
     }
+    if (path === `/repos/${REPO}/contents/README.md`) {
+      if (new URL(req.url).searchParams.get("ref") !== SHA || state.readme === null) {
+        return Response.json({ message: "Not Found" }, { status: 404 });
+      }
+      return Response.json({ encoding: "base64", content: Buffer.from(state.readme).toString("base64") });
+    }
     if (path === `/repos/${REPO}/releases/tags/${TAG}`) {
       if (state.release === "absent") return Response.json({ message: "Not Found" }, { status: 404 });
       return Response.json({ tag_name: TAG, draft: state.readBackDraft, html_url: `https://example.invalid/${TAG}` });
@@ -76,7 +85,7 @@ afterAll(() => server.stop(true));
 beforeEach(() => {
   state = {
     tag: "lightweight", release: "absent", postStatus: 201, readBackDraft: false, moveTagOnPost: false,
-    stall: false, refStatus: 201, newRefPointsElsewhere: false,
+    stall: false, refStatus: 201, newRefPointsElsewhere: false, readme: README_OK,
   };
   hits = [];
 });
@@ -182,16 +191,43 @@ test("tag: dry-run and no token write nothing", async () => {
 
 // ── page (H32's order) ──
 
-test("page: lightweight tag → created, crates.io link on top, read back, peeled again", async () => {
+test("page: lightweight tag → created, Tested on + crates.io link on top, read back, peeled again", async () => {
   const r = await run("page");
   expect(r.code).toBe(0);
   expect(r.out).toContain(`GitHub Release ${TAG} created`);
   expect(posts().length).toBe(1);
   expect(posts()[0].auth).toBe("Bearer tok");
   expect(posts()[0].body).toMatchObject({ tag_name: TAG, name: "rsxtk 9.8.7", generate_release_notes: true, draft: false });
-  expect(posts()[0].body.body).toBe("crates.io: https://crates.io/crates/rsxtk/9.8.7");
+  expect(posts()[0].body.body).toBe(
+    "Tested on: Windows 11 (win-x64)\nOther platforms: not yet tested.\n\ncrates.io: https://crates.io/crates/rsxtk/9.8.7",
+  );
   const lastRef = hits.map((h) => h.path).lastIndexOf(`/repos/${REPO}/git/ref/tags/${TAG}`);
   expect(lastRef).toBeGreaterThan(hits.findIndex((h) => h.method === "POST"));
+});
+
+test("page: the README's lines at the released commit, each platform and its Other platforms line", async () => {
+  state.readme = "Tested on: Windows 11 (win-x64)\nTested on: Ubuntu 24.04 (linux-x64)\nOther platforms: pending.\n";
+  const r = await run("page");
+  expect(r.code).toBe(0);
+  expect(posts()[0].body.body).toBe(
+    "Tested on: Windows 11 (win-x64)\nTested on: Ubuntu 24.04 (linux-x64)\nOther platforms: pending.\n\ncrates.io: https://crates.io/crates/rsxtk/9.8.7",
+  );
+  expect(hits.some((h) => h.path === `/repos/${REPO}/contents/README.md`)).toBe(true);
+});
+
+test("page: no Tested on line (or an unknown platform ID) → refused, nothing written (H37)", async () => {
+  for (const readme of ["# rsxtk\n\nNo platform line.\n", "Tested on: Windows 11 (win-x86)\n"]) {
+    state.readme = readme;
+    hits = [];
+    const r = await run("page");
+    expect(r.code).toBe(1);
+    expect(r.out).toContain("has no \"Tested on: <OS> (<platform ID>)\" line");
+    expect(posts().length).toBe(0);
+  }
+  state.readme = null;
+  const missing = await run("page");
+  expect(missing.code).toBe(1);
+  expect(missing.out).toContain("GET README.md at");
 });
 
 test("page: annotated tag → followed to its commit, then created", async () => {

@@ -33,6 +33,7 @@
  * `fetch`.
  */
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import process from "node:process";
 import { ROOT, TAG_PREFIX, cargoVersion, releaseGate, run } from "./compat.ts";
 import { check as reviewGate } from "./review-gate.ts";
@@ -90,6 +91,11 @@ const subject = git("log", "-1", "--format=%s", "HEAD");
 if (subject !== `bump to v${version}`) fail(`the commit on top is "${subject}", not "bump to v${version}" (run bun scripts/bump.ts <level>)`);
 const files = git("show", "--name-only", "--format=", "HEAD").split(/\r?\n/).filter(Boolean).sort();
 if (files.join(",") !== "Cargo.lock,Cargo.toml") fail(`the bump commit changes ${files.join(", ")}, not only Cargo.toml + Cargo.lock`);
+
+// ── the README says what this release was tested on (H37; CI's Release page copies these lines) ──
+const testedOn = readFileSync(`${ROOT}/README.md`, "utf8").split(/\r?\n/).map((l) => l.trim())
+  .filter((l) => /^Tested on: \S.* \((win|mac|linux)-(x64|arm64)\)$/.test(l));
+if (testedOn.length === 0) fail(`README.md has no "Tested on: <OS> (<platform ID>)" line — add one per platform the full suite passed on`);
 
 // ── the tag: absent here and on origin ──
 if (run("git", ["rev-parse", "-q", "--verify", `refs/tags/${tag}`]).status === 0) fail(`tag ${tag} exists locally`);

@@ -6,7 +6,11 @@
 
 `rsxtk` is a high-performance scripting toolkit that allows you to run single Rust files as standalone scripts with automatic dependency management, WASM/WASI compilation, and localized resource support.
 
+This release's test suite was run on:
 
+Tested on: Windows 11 (win-x64)
+
+Other platforms: not yet tested.
 
 ---
 

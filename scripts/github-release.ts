@@ -27,9 +27,10 @@
  *        must peel to GITHUB_SHA. Already peeling to GITHUB_SHA → done, nothing written. Elsewhere
  *        → refused: a published tag never moves.
  * page:  H32's order: (1) the tag peels to GITHUB_SHA (`POST /releases` would CREATE a missing
- *        tag from the default branch); (2) an existing page = done, nothing written; (3) POST
- *        `generate_release_notes` with the crates.io link on top, read back (the tag, not a
- *        draft), peel again.
+ *        tag from the default branch); (2) an existing page = done, nothing written; (3) the
+ *        README's `Tested on: … (<platform ID>)` lines at GITHUB_SHA (none = refused, H37);
+ *        (4) POST `generate_release_notes` with those lines, "Other platforms: …" and the
+ *        crates.io link on top, read back (the tag, not a draft), peel again.
  *
  * `node:` builtins and `fetch` only.
  */
@@ -173,11 +174,26 @@ if (existing.status === 200) {
 }
 if (existing.status !== 404) fail(`GET release ${tag}: HTTP ${existing.status} ${JSON.stringify(existing.json)}`);
 
-// 3. Create it, read it back, peel the tag again.
+// 3. The page's notes open with what this release was tested on (🔒 owner, 2026-11-19, letter H37:
+//    "Tested on: <OS and version> (<platform ID>)" per platform actually run, and nothing claimed
+//    for the others), read from README.md AT THE RELEASED COMMIT — the README is the one source.
+const readme = await call("GET", `/repos/${repo}/contents/README.md?ref=${sha}`);
+if (readme.status !== 200 || typeof readme.json?.content !== "string") {
+  fail(`GET README.md at ${sha}: HTTP ${readme.status}`);
+}
+const readmeText = Buffer.from(readme.json.content, "base64").toString("utf8");
+const tested = testedOnLines(readmeText);
+if (tested.length === 0) {
+  fail(`README.md at ${sha} has no "Tested on: <OS> (<platform ID>)" line; refusing (H37)`);
+}
+const others = readmeText.split(/\r?\n/).map((l) => l.trim()).find((l) => /^Other platforms:/.test(l))
+  ?? "Other platforms: not yet tested.";
+
+// 4. Create it, read it back, peel the tag again.
 const body = {
   tag_name: tag,
   name: `rsxtk ${version}`,
-  body: `crates.io: https://crates.io/crates/${crate}/${version}`,
+  body: [...tested, others, "", `crates.io: https://crates.io/crates/${crate}/${version}`].join("\n"),
   generate_release_notes: true,
   draft: false,
   prerelease: false,
@@ -197,3 +213,9 @@ if (back.json?.tag_name !== tag || back.json?.draft !== false) {
 const after = await peel();
 if (after !== sha) fail(`after the POST, tag ${tag} is ${after ?? "missing"}, not ${sha}`);
 console.log(`GitHub Release ${tag} created: ${back.json?.html_url}`);
+
+/** The README's `Tested on: <OS and version> (<platform ID>)` lines, the six IDs only. */
+function testedOnLines(text: string): string[] {
+  return text.split(/\r?\n/).map((l) => l.trim())
+    .filter((l) => /^Tested on: \S.* \((win|mac|linux)-(x64|arm64)\)$/.test(l));
+}
