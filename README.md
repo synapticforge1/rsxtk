@@ -10,6 +10,8 @@ This release's test suite was run on:
 
 Tested on: Windows 11 (win-x64)
 
+Tested on: Ubuntu 26.04 LTS under WSL 2 (linux-x64)
+
 Other platforms: not yet tested.
 
 ---
