@@ -702,6 +702,26 @@ fn lock_dir_like_rsxtk() -> PathBuf {
     std::env::temp_dir().join("rsxtk-locks")
 }
 
+/// [linux-x64, linux-arm64] The lock folder is 0700 even when it already existed with a wider mode
+/// (the linux-x64 run of 2026-11-20 found it at 0755). `XDG_CACHE_HOME` points the folder into this
+/// test's own directory, so the user's real cache is never touched.
+#[cfg(target_os = "linux")]
+#[test]
+fn the_lock_folder_is_private_even_if_it_existed() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = workdir("lock_folder_mode");
+    fs::write(dir.join("s.rs"), SCRIPT).unwrap();
+    let cache = dir.join("cache");
+    let locks = cache.join("rsxtk").join("locks");
+    fs::create_dir_all(&locks).unwrap();
+    fs::set_permissions(&locks, fs::Permissions::from_mode(0o755)).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_rsxtk")).args(["add", "s.rs", "itoa", "1"])
+        .env("XDG_CACHE_HOME", &cache).current_dir(&dir).output().unwrap();
+    assert_ok(&out);
+    assert_eq!(fs::metadata(&locks).unwrap().permissions().mode() & 0o777, 0o700);
+    assert_eq!(fs::read_dir(&locks).unwrap().count(), 1, "one lock file, in the redirected folder");
+}
+
 #[test]
 fn remove_refuses_an_entry_that_never_closes_and_keeps_the_file() {
     // Review NEW-1: `serde = { version = "1"` without its `}` made `remove` drop every later line.

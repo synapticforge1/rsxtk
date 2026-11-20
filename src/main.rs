@@ -617,20 +617,19 @@ fn lock_dir() -> PathBuf {
     std::env::temp_dir().join("rsxtk-locks")
 }
 
-/// Creates `dir` (and its parents) if missing. [linux-*, mac-*] The folder itself gets mode 0700,
-/// so other local users cannot list which scripts were edited when (privacy re-review 2).
+/// Creates `dir` (and its parents) if missing. [linux-x64, linux-arm64, mac-x64, mac-arm64] The
+/// folder is then set to mode 0700 whether rsxtk made it or found it, so other local users cannot
+/// list which scripts were edited when (privacy re-review 2). The linux-x64 run of 2026-11-20 found
+/// a folder made by someone else (there: a test) kept at 0755; a folder another user owns cannot
+/// be changed, which is an error, not a silent pass.
 fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dir)?;
     #[cfg(unix)]
     {
-        use std::os::unix::fs::DirBuilderExt;
-        if let Some(parent) = dir.parent() { fs::create_dir_all(parent)?; }
-        match fs::DirBuilder::new().mode(0o700).create(dir) {
-            Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => return Err(e),
-            _ => return Ok(()),
-        }
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
     }
-    #[cfg(not(unix))]
-    fs::create_dir_all(dir)
+    Ok(())
 }
 
 /// The manifest with `crate_name` removed from its `[dependencies]` table and, given a version,
