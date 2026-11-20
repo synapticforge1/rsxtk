@@ -124,6 +124,28 @@ rsxtk csrun my_script.rs
 
 ---
 
+## Breaking Changes
+
+What changed in a way that can break a script or a command line you already use, and what to do. From 1.0.0 on, a change like these comes only with a new major version.
+
+### 1.0.0 (from 0.5.x)
+
+| What changed | Before (0.5.x) | Now (1.0.0) | What to do |
+| :--- | :--- | :--- | :--- |
+| Writing files from a guest | A guest could create, change and delete any file in its folder | Its folder is **read-only** | Add `--allow-write` when the module or script must write: `rsxtk run --allow-write app.wasm` |
+| Guest memory | No limit | All of a guest's memories and tables together: at most 4096 MiB (`memory.grow` / `table.grow` past it return -1) | Raise it if needed: `rsxtk --max-memory 8192 run app.wasm` |
+| `.cwasm` files | `run`, `mod`, `bench` and `info` loaded them | Refused: precompiled native code cannot be checked | Run the `.wasm`, `.wat` or `.rs` it was built from |
+| `add` without a version, for a crate crates.io does not have | Wrote `name = "*"` and reported success | An error; nothing is written | Check the crate's name |
+| `add` / `remove` with an unusual manifest | Could duplicate a dependency, put it in the wrong table, or drop lines — and report success | Refused with a message when there is text before the `---` block, an entry that never closes, or a multi-line string; the file is unchanged | Move the manifest to the top of the file, close the entry, or edit those lines by hand |
+| `mod <file> <fn> <args>…` with too many arguments | Extra arguments were ignored | An error naming how many the function takes | Pass exactly the function's arguments |
+| `init` / `initmod` on an existing file | The file was replaced by the template | Refused; the file is unchanged | Remove or rename the file first |
+| `fmt` | Formatted as Rust 2015 and reported success even when rustfmt failed | Formats as Rust 2021; a rustfmt failure is an error and the file is unchanged | Fix the code rustfmt points to |
+| `convert x.wasm -o x.wasm` | Replaced the input with the other format | Refused | Give a different output name |
+
+Build caches made by 0.5.x (`.tk/`) are rebuilt automatically; no action is needed.
+
+---
+
 ## Technical Details
 
 ### The Build Pipeline
