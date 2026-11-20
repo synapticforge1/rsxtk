@@ -693,40 +693,75 @@ fn remove_of_an_absent_crate_never_adds_a_dependencies_table() {
     assert_eq!(fs::read_to_string(dir.join("t.rs")).unwrap(), original);
 }
 
-/// [linux-x64, linux-arm64] `add` keeps an executable script executable and writes THROUGH a
-/// symlink (review 2, U1: the mode dropped to 0644 and the link was replaced by a file).
-#[cfg(target_os = "linux")]
-#[test]
-fn add_keeps_the_scripts_mode_and_its_symlink() {
-    use std::os::unix::fs::PermissionsExt;
-    let dir = workdir("r2_u1_mode_link");
-    fs::write(dir.join("real.rs"), SCRIPT).unwrap();
-    fs::set_permissions(dir.join("real.rs"), fs::Permissions::from_mode(0o755)).unwrap();
-    std::os::unix::fs::symlink("real.rs", dir.join("link.rs")).unwrap();
-    assert_ok(&rsxtk(&dir, &["add", "link.rs", "itoa", "1"]));
-    assert!(fs::symlink_metadata(dir.join("link.rs")).unwrap().file_type().is_symlink(), "the link became a file");
-    assert!(fs::read_to_string(dir.join("real.rs")).unwrap().contains("itoa = \"1\""));
-    assert_eq!(fs::metadata(dir.join("real.rs")).unwrap().permissions().mode() & 0o777, 0o755);
+/// Makes `link` a symbolic link to `target` (a path relative to the link's folder). [win-x64,
+/// win-arm64] Creating one needs Developer Mode or an administrator; without it the test FAILS,
+/// saying so, instead of passing untested.
+fn symlink(target: &str, link: &Path, is_dir: bool) {
+    #[cfg(unix)]
+    let made = { let _ = is_dir; std::os::unix::fs::symlink(target, link) };
+    #[cfg(windows)]
+    let made = if is_dir { std::os::windows::fs::symlink_dir(target, link) } else { std::os::windows::fs::symlink_file(target, link) };
+    made.unwrap_or_else(|e| panic!("could not create the symlink {} ({}); on Windows turn on Developer Mode", link.display(), e));
 }
 
-/// [linux-x64, linux-arm64] A symlink planted at an OUTPUT name is replaced, never followed: a
-/// `convert -o` onto a link must not overwrite the link's target (re-review 2: write-through for
-/// every output was a containment regression; only add / remove / fmt follow a link).
-#[cfg(target_os = "linux")]
+fn is_link(path: &Path) -> bool {
+    fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink())
+}
+
+/// `add` writes THROUGH a symlinked script, and on Unix keeps it executable (review 2, U1: the
+/// mode dropped to 0644 and the link was replaced by a file). Run on Windows too since 1.0.1.
+#[test]
+fn add_keeps_the_scripts_mode_and_its_symlink() {
+    let dir = workdir("r2_u1_mode_link");
+    fs::write(dir.join("real.rs"), SCRIPT).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(dir.join("real.rs"), fs::Permissions::from_mode(0o755)).unwrap();
+    }
+    symlink("real.rs", &dir.join("link.rs"), false);
+    assert_ok(&rsxtk(&dir, &["add", "link.rs", "itoa", "1"]));
+    assert!(is_link(&dir.join("link.rs")), "the link became a file");
+    assert!(fs::read_to_string(dir.join("real.rs")).unwrap().contains("itoa = \"1\""));
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(fs::metadata(dir.join("real.rs")).unwrap().permissions().mode() & 0o777, 0o755);
+    }
+}
+
+/// A symlink planted at an OUTPUT name is replaced, never followed: a `convert -o` onto a link
+/// must not overwrite the link's target (re-review 2: write-through for every output was a
+/// containment regression; only add / remove / fmt / optimize-in-place follow a link).
 #[test]
 fn an_output_symlink_is_replaced_not_followed() {
     let dir = workdir("r2_output_link");
     fs::write(dir.join("lib.wat"), LIB_WAT).unwrap();
     fs::write(dir.join("victim.txt"), "keep me").unwrap();
-    std::os::unix::fs::symlink("victim.txt", dir.join("out.wasm")).unwrap();
+    symlink("victim.txt", &dir.join("out.wasm"), false);
     assert_ok(&rsxtk(&dir, &["convert", "lib.wat", "-o", "out.wasm"]));
     assert_eq!(fs::read_to_string(dir.join("victim.txt")).unwrap(), "keep me");
-    assert!(!fs::symlink_metadata(dir.join("out.wasm")).unwrap().file_type().is_symlink(), "the link was followed");
+    assert!(!is_link(&dir.join("out.wasm")), "the link was followed");
+}
+
+/// `optimize` without `-o` rewrites a symlinked module THROUGH its link, as `add` and `fmt` do
+/// (re-review 3: it replaced the link with a file).
+#[test]
+fn optimize_in_place_keeps_a_symlinked_module_a_link() {
+    let dir = workdir("r3_optimize_link");
+    fs::write(dir.join("lib.wat"), LIB_WAT).unwrap();
+    assert_ok(&rsxtk(&dir, &["convert", "lib.wat", "-o", "real.wasm"]));
+    symlink("real.wasm", &dir.join("lnk.wasm"), false);
+    assert_ok(&rsxtk(&dir, &["optimize", "-i", "lnk.wasm"]));
+    assert!(is_link(&dir.join("lnk.wasm")), "the link became a file");
+    assert!(fs::read(dir.join("real.wasm")).unwrap().starts_with(b"\0asm"));
 }
 
 /// [linux-x64, linux-arm64] A symlink planted at a TEMPORARY name is never followed either: the
 /// old temp name `.<name>.rsxtk-<pid>.tmp` was predictable and opened with a plain write (re-review
 /// 3). Links at every pid-only name a run could use are planted; the victim file must stay intact.
+/// Linux only: its pids follow each other, so the window catches the child's; Windows pids do not
+/// (measured 2026-11-20: the window missed and the test passed on the unfixed code there).
 #[cfg(target_os = "linux")]
 #[test]
 fn a_symlink_at_a_temporary_name_is_never_followed() {
@@ -736,11 +771,56 @@ fn a_symlink_at_a_temporary_name_is_never_followed() {
     // The child's pid is unknown before it starts, so cover a window of plausible pids.
     let me = std::process::id();
     for pid in me.saturating_sub(50)..me + 400 {
-        let _ = std::os::unix::fs::symlink("victim.txt", dir.join(format!(".out.wasm.rsxtk-{}.tmp", pid)));
+        symlink("victim.txt", &dir.join(format!(".out.wasm.rsxtk-{}.tmp", pid)), false);
     }
     assert_ok(&rsxtk(&dir, &["convert", "lib.wat", "-o", "out.wasm"]));
     assert_eq!(fs::read_to_string(dir.join("victim.txt")).unwrap(), "keep me");
     assert!(fs::read(dir.join("out.wasm")).unwrap().starts_with(b"\0asm"));
+}
+
+/// A link inside `.tk/` is refused before anything is built or locked: at `.tk/<stem>`, at its
+/// `src` folder and at the lock file (open items before 1.0.1: the build followed them, writing the
+/// mirror — and later loading a module — wherever they pointed). `.tk` itself may be a link.
+#[test]
+fn a_link_in_the_tk_folder_is_refused() {
+    let dir = workdir("tk_links");
+    fs::write(dir.join("s.rs"), SCRIPT).unwrap();
+    fs::create_dir_all(dir.join("evil")).unwrap();
+    let refused = |what: &str| {
+        let out = rsxtk(&dir, &["run", "s.rs"]);
+        assert_fails(&out);
+        assert!(stderr(&out).contains("is a link"), "{}: {}", what, stderr(&out));
+        assert_eq!(fs::read_dir(dir.join("evil")).unwrap().count(), 0, "{}: something was written through the link", what);
+    };
+    fs::create_dir_all(dir.join(".tk")).unwrap();
+    symlink("../evil", &dir.join(".tk").join("s"), true);
+    refused(".tk/s");
+    fs::remove_dir(dir.join(".tk").join("s")).or_else(|_| fs::remove_file(dir.join(".tk").join("s"))).unwrap();
+    fs::create_dir_all(dir.join(".tk").join("s")).unwrap();
+    symlink("../../evil", &dir.join(".tk").join("s").join("src"), true);
+    refused(".tk/s/src");
+    fs::remove_dir(dir.join(".tk").join("s").join("src")).or_else(|_| fs::remove_file(dir.join(".tk").join("s").join("src"))).unwrap();
+    // A dangling link at the lock file: following it would create the file it names.
+    symlink("../evil/planted", &dir.join(".tk").join("s.lock"), false);
+    refused(".tk/s.lock");
+}
+
+/// `fmt` stops rustfmt at its time limit, kills it and leaves the script unchanged (review 2, D2:
+/// rustfmt ran past 60 s on deeply nested code while holding the script's lock). 200 nested
+/// `vec!` keep rustfmt busy for more than 20 s (measured 2026-11-20); a debug build's
+/// `RSXTK_TEST_RUSTFMT_LIMIT_MS` shortens the 120-s limit to 1 s here.
+#[test]
+fn fmt_stops_rustfmt_at_its_time_limit() {
+    let dir = workdir("fmt_limit");
+    let original = format!("---\n[dependencies]\n---\nfn main() {{ let _x = {}1{}; }}\n", "vec![".repeat(200), "]".repeat(200));
+    fs::write(dir.join("deep.rs"), &original).unwrap();
+    let started = std::time::Instant::now();
+    let out = Command::new(env!("CARGO_BIN_EXE_rsxtk")).args(["fmt", "deep.rs"])
+        .env("RSXTK_TEST_RUSTFMT_LIMIT_MS", "1000").current_dir(&dir).output().unwrap();
+    assert_fails(&out);
+    assert!(stderr(&out).contains("did not finish within"), "{}", stderr(&out));
+    assert!(started.elapsed() < std::time::Duration::from_secs(15), "took {:?}", started.elapsed());
+    assert_eq!(fs::read_to_string(dir.join("deep.rs")).unwrap(), original);
 }
 
 /// [linux-x64, linux-arm64] A script name that is not UTF-8 is a named error, not a panic (U2).
@@ -901,8 +981,31 @@ fn lock_dir_like_rsxtk() -> PathBuf {
         let cache = std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from).filter(|p| p.is_absolute())
             .or_else(|| std::env::var_os("HOME").map(PathBuf::from).filter(|p| p.is_absolute()).map(|h| h.join(".cache")));
         if let Some(cache) = cache { return cache.join("rsxtk").join("locks"); }
+        use std::os::unix::fs::MetadataExt;
+        if let Ok(me) = fs::metadata("/proc/self") {
+            return std::env::temp_dir().join(format!("rsxtk-locks-{}", me.uid()));
+        }
     }
     std::env::temp_dir().join("rsxtk-locks")
+}
+
+/// [linux-x64, linux-arm64] With no usable HOME, the lock folder is a per-user one in the temp
+/// folder, `rsxtk-locks-<uid>` (open items before 1.0.1: one shared `/tmp/rsxtk-locks`, made 0700
+/// by the first user, blocked every other user). TMPDIR points it into this test's own folder.
+#[cfg(target_os = "linux")]
+#[test]
+fn without_home_the_lock_folder_is_per_user() {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    let dir = workdir("lock_folder_no_home");
+    fs::write(dir.join("s.rs"), SCRIPT).unwrap();
+    let tmp = dir.join("tmp");
+    fs::create_dir_all(&tmp).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_rsxtk")).args(["add", "s.rs", "itoa", "1"])
+        .env_remove("HOME").env_remove("XDG_CACHE_HOME").env("TMPDIR", &tmp).current_dir(&dir).output().unwrap();
+    assert_ok(&out);
+    let locks = tmp.join(format!("rsxtk-locks-{}", fs::metadata("/proc/self").unwrap().uid()));
+    assert_eq!(fs::metadata(&locks).unwrap().permissions().mode() & 0o777, 0o700, "no per-user folder");
+    assert!(!tmp.join("rsxtk-locks").exists(), "the shared name was used");
 }
 
 /// [linux-x64, linux-arm64] The lock folder is 0700 even when it already existed with a wider mode

@@ -33,12 +33,20 @@ and `wasm32-wasip1` target installed:
 rustup target add wasm32-wasip1
 ```
 
+## Install
+
+```bash
+cargo install rsxtk --locked
+```
+
+`--locked` builds rsxtk with the exact dependency versions it was tested and released with.
+
 ---
 
 ## Features
 
--   **⚡ Script Cache**: A `.rs` script is built once to an optimized `.wasm` and reused until the script changes, so repeated runs skip `cargo`. The cached module is validated on every run.
--   **📦 Resource Folder (`rsc/`)**: Keep local assets (HTML, CSV, JSON, etc.) in an `rsc/` folder next to your script. Read them at run time through the sandbox, or embed them at compile time with `include_str!("rsc/…")` / `include_bytes!`.
+-   **⚡ Script Cache**: A `.rs` script is built once to an optimized `.wasm` and reused until the script changes, so repeated runs skip `cargo`. The cached module is validated on every run. The cache lives in `.tk/` in the current folder; `.tk` may be a link (for example to another drive), but a link inside it is refused, and on Linux and macOS a `.tk` that belongs to another user is refused.
+-   **📦 Resource Folder (`rsc/`)**: Keep local assets (HTML, CSV, JSON, etc.) in an `rsc/` folder next to your script. Read them at run time through the sandbox, or embed them at compile time with `include_str!("rsc/…")` / `include_bytes!`. A symlink in `rsc/` is followed when the script is built: the file it points to is copied into the build, so keep only files you trust there.
 -   **🔨 build.rs Support**: A `build.rs` next to your script is used as the script's Cargo build script (code generation, `cargo:rustc-env`, and so on).
 -   **🔍 Auto-Dependency Versioning**: Adding a dependency without a version fetches the latest release from crates.io. A crate crates.io does not know is an error; if crates.io cannot be reached, `*` is written with a warning so you can pin a version later.
 -   **🚀 WASI Preview 1**: Runs on `wasmtime` 50 with `wasmtime-wasi` preview-1, including WASI exit-status handling.

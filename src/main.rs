@@ -440,10 +440,18 @@ fn suggest_script_name(stem: &str) -> String {
 /// A lock on one script's build cache for as long as the returned file lives: a second `run`,
 /// `build` or `info` of the same script waits — saying so — instead of racing on the mirror. No
 /// time limit: the holder is a Cargo build, which has none (owner, 2026-11-20).
+///
+/// The `.tk` folder is checked first (open items before 1.0.1): a link INSIDE it — at `.tk/<stem>`,
+/// its `src` folder or the lock file, all rsxtk's own — is refused, since a build through it would
+/// write (and later load a module from) wherever it points; and on Unix a `.tk` another user owns
+/// is refused, so a shared folder's cache cannot be swapped under the user. `.tk` itself may be a
+/// link (a cache on another drive), as long as on Unix the folder it names is the user's own.
 fn lock_cache(cache_root: &Path, stem: &str) -> Result<fs::File> {
     let tk = cache_root.parent().ok_or_else(|| anyhow!("no .tk folder for '{}'", cache_root.display()))?;
     fs::create_dir_all(tk)?;
+    check_owned(tk)?;
     let lock_path = tk.join(format!("{}.lock", stem));
+    for path in [lock_path.as_path(), cache_root, &cache_root.join("src")] { refuse_link(path)?; }
     let file = fs::OpenOptions::new().create(true).truncate(false).write(true).open(&lock_path)
         .map_err(|e| anyhow!("❌ could not open the build lock '{}': {}", lock_path.display(), e))?;
     match file.try_lock() {
@@ -455,6 +463,30 @@ fn lock_cache(cache_root: &Path, stem: &str) -> Result<fs::File> {
         Err(fs::TryLockError::Error(e)) => bail!("❌ could not lock '{}': {}", lock_path.display(), e),
     }
     Ok(file)
+}
+
+/// An error when `path` is a symbolic link (on Windows also a junction); a missing path is fine.
+fn refuse_link(path: &Path) -> Result<()> {
+    if fs::symlink_metadata(path).is_ok_and(|m| m.file_type().is_symlink()) {
+        bail!("❌ '{}' is a link; rsxtk does not build through a link in .tk/, which could point anywhere. Remove it and run again.", path.display());
+    }
+    Ok(())
+}
+
+/// [linux-x64, linux-arm64, mac-x64, mac-arm64] An error when this user cannot change `dir`'s mode
+/// — it belongs to someone else. Setting the mode it already has changes nothing and fails only
+/// for a non-owner (root may change any). [win-x64, win-arm64] Not checked: a folder's access is
+/// its ACL, which the folder's owner set.
+fn check_owned(dir: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        let perms = fs::metadata(dir)?.permissions();
+        fs::set_permissions(dir, perms).map_err(|e| anyhow!(
+            "❌ '{}' is not yours ({}); rsxtk will not build in another user's .tk folder. Remove it or run the script from a folder you own.", dir.display(), e))?;
+    }
+    #[cfg(not(unix))]
+    let _ = dir;
+    Ok(())
 }
 
 /// The `---`-fenced manifest and the code after it. A UTF-8 byte-order mark and blank lines may
@@ -805,7 +837,7 @@ const LOCK_WAIT: std::time::Duration = std::time::Duration::from_secs(60);
 /// Where the lock files live: a folder only this user can use.
 /// [linux-x64, linux-arm64] `/tmp` is shared by every user, so a lock folder there could be
 /// pre-created or held by someone else (security re-review 2): the per-user cache folder is used
-/// (`$XDG_CACHE_HOME/rsxtk/locks`, else `~/.cache/rsxtk/locks`).
+/// (`$XDG_CACHE_HOME/rsxtk/locks`, else `~/.cache/rsxtk/locks`, else `/tmp/rsxtk-locks-<uid>`).
 /// [win-x64, win-arm64, mac-x64, mac-arm64] the temp folder is already per-user (`%TEMP%`, `$TMPDIR`).
 fn lock_dir() -> PathBuf {
     #[cfg(target_os = "linux")]
@@ -813,6 +845,12 @@ fn lock_dir() -> PathBuf {
         let cache = std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from).filter(|p| p.is_absolute())
             .or_else(|| std::env::var_os("HOME").map(PathBuf::from).filter(|p| p.is_absolute()).map(|h| h.join(".cache")));
         if let Some(cache) = cache { return cache.join("rsxtk").join("locks"); }
+        // No usable HOME: the shared temp folder, under a name of this user's own (its uid, the
+        // owner of /proc/self), so one user's folder never blocks another's (open items before 1.0.1).
+        use std::os::unix::fs::MetadataExt;
+        if let Ok(me) = fs::metadata("/proc/self") {
+            return std::env::temp_dir().join(format!("rsxtk-locks-{}", me.uid()));
+        }
     }
     std::env::temp_dir().join("rsxtk-locks")
 }
@@ -1110,13 +1148,14 @@ fn rustfmt(code: &str) -> Result<String> {
     let feeder = std::thread::spawn(move || { let _ = stdin.write_all(input.as_bytes()); });
     let out_reader = std::thread::spawn(move || { let mut v = Vec::new(); let _ = stdout.read_to_end(&mut v); v });
     let err_reader = std::thread::spawn(move || { let mut v = Vec::new(); let _ = stderr.read_to_end(&mut v); v });
-    let deadline = Instant::now() + RUSTFMT_LIMIT;
+    let limit = rustfmt_limit();
+    let deadline = Instant::now() + limit;
     let status = loop {
         if let Some(status) = child.try_wait()? { break status; }
         if Instant::now() >= deadline {
             let _ = child.kill();
             let _ = child.wait();
-            bail!("❌ rustfmt did not finish within {} s and was stopped.", RUSTFMT_LIMIT.as_secs());
+            bail!("❌ rustfmt did not finish within {} s and was stopped.", limit.as_secs_f32());
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
     };
@@ -1131,6 +1170,17 @@ fn rustfmt(code: &str) -> Result<String> {
 
 /// How long `fmt` lets rustfmt run.
 const RUSTFMT_LIMIT: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// `RUSTFMT_LIMIT`, which a DEBUG build lets a test shorten with `RSXTK_TEST_RUSTFMT_LIMIT_MS` so
+/// the limit itself is tested (open items before 1.0.1). A release build — every `cargo install` —
+/// reads no such variable.
+fn rustfmt_limit() -> std::time::Duration {
+    #[cfg(debug_assertions)]
+    if let Some(ms) = std::env::var("RSXTK_TEST_RUSTFMT_LIMIT_MS").ok().and_then(|v| v.parse::<u64>().ok()) {
+        return std::time::Duration::from_millis(ms);
+    }
+    RUSTFMT_LIMIT
+}
 
 /// True when both paths name one existing file.
 fn same_file(a: &Path, b: &Path) -> bool {

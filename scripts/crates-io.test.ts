@@ -4,6 +4,7 @@
  * endpoint and crates.io's API, recording every request. Run with `bun test scripts/`.
  */
 import { afterAll, beforeEach, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,8 +19,11 @@ const CRATES_TOKEN = "cio-secret-token-123";
 type Hit = { method: string; path: string; search: string; auth: string | null; body: string };
 let state: {
   listed: string[]; listStatus: number; oidcStatus: number; exchangeStatus: number;
-  revokeStatus: number; servedAfter: number; yanked: boolean; stall: boolean;
+  revokeStatus: number; servedAfter: number; yanked: boolean; stall: boolean; checksum: string | undefined;
 };
+/** The package bytes the read-back hashes, and their sha256 (what crates.io serves when they match). */
+const PACKAGE = "pretend .crate bytes";
+const PACKAGE_SUM = createHash("sha256").update(PACKAGE).digest("hex");
 let hits: Hit[];
 let versionGets = 0;
 
@@ -50,7 +54,7 @@ const server = Bun.serve({
     if (url.pathname === `/api/v1/crates/${CRATE}/${VERSION}`) {
       versionGets++;
       if (versionGets <= state.servedAfter) return Response.json({ errors: [] }, { status: 404 });
-      return Response.json({ version: { num: VERSION, yanked: state.yanked } });
+      return Response.json({ version: { num: VERSION, yanked: state.yanked, checksum: state.checksum } });
     }
     return Response.json({ errors: [] }, { status: 404 });
   },
@@ -59,10 +63,11 @@ const server = Bun.serve({
 let dir: string;
 afterAll(() => server.stop(true));
 beforeEach(() => {
-  state = { listed: ["1.0.0"], listStatus: 200, oidcStatus: 200, exchangeStatus: 200, revokeStatus: 204, servedAfter: 0, yanked: false, stall: false };
+  state = { listed: ["1.0.0"], listStatus: 200, oidcStatus: 200, exchangeStatus: 200, revokeStatus: 204, servedAfter: 0, yanked: false, stall: false, checksum: PACKAGE_SUM };
   hits = [];
   versionGets = 0;
   dir = mkdtempSync(join(tmpdir(), "cio-test-"));
+  writeFileSync(join(dir, "pkg.crate"), PACKAGE);
 });
 
 async function run(cmd: string, extra: Record<string, string | null> = {}) {
@@ -71,7 +76,7 @@ async function run(cmd: string, extra: Record<string, string | null> = {}) {
   for (const k of ["GITHUB_ENV", "GITHUB_OUTPUT", "CARGO_REGISTRY_TOKEN", "ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN"]) delete env[k];
   Object.assign(env, {
     CRATE, VERSION, CRATES_API_URL: `http://127.0.0.1:${server.port}`,
-    READBACK_ATTEMPTS: "4", READBACK_INTERVAL_MS: "50",
+    READBACK_ATTEMPTS: "4", READBACK_INTERVAL_MS: "50", CRATE_FILE: join(dir, "pkg.crate"),
   });
   for (const [k, v] of Object.entries(extra)) {
     if (v === null) delete env[k];
@@ -196,6 +201,29 @@ test("readback: served but yanked → FATAL", async () => {
   const r = await run("readback");
   expect(r.code).toBe(1);
   expect(r.all).toContain("YANKED");
+});
+
+test("readback: the checksum matches this commit's package → names it", async () => {
+  const r = await run("readback");
+  expect(r.code).toBe(0);
+  expect(r.all).toContain(`checksum ${PACKAGE_SUM} matches`);
+});
+
+test("readback: other bytes on crates.io, or no checksum → FATAL", async () => {
+  state.checksum = "0".repeat(64);
+  const r = await run("readback");
+  expect(r.code).toBe(1);
+  expect(r.all).toContain("NOT the same bytes");
+  state.checksum = undefined;
+  expect((await run("readback")).all).toContain("NOT the same bytes");
+});
+
+test("readback: no package file → FATAL before any request", async () => {
+  const r = await run("readback", { CRATE_FILE: join(dir, "missing.crate") });
+  expect(r.code).toBe(1);
+  expect(r.all).toContain("cannot read the package");
+  expect((await run("readback", { CRATE_FILE: null })).all).toContain("CRATE_FILE is not set");
+  expect(hits.length).toBe(0);
 });
 
 test("stalled registry: fails at the time limit instead of hanging", async () => {

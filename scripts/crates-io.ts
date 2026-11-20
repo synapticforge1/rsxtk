@@ -8,7 +8,7 @@
  *   bun scripts/crates-io.ts token     # GitHub OIDC (audience "crates.io") -> a short-lived crates.io token
  *   cargo publish --locked --no-verify # with that token
  *   bun scripts/crates-io.ts revoke    # end the token (always runs once one was made)
- *   bun scripts/crates-io.ts readback  # FATAL: crates.io serves VERSION, not yanked
+ *   bun scripts/crates-io.ts readback  # FATAL: crates.io serves VERSION, not yanked, sha256 = CRATE_FILE's
  *
  * Trusted publishing, as rust-lang/crates-io-auth-action implements it (read 2026-11-10 from its
  * `dist/main.js` / `dist/post.js`): the OIDC audience is the registry host without its scheme
@@ -27,11 +27,13 @@
  *   CARGO_REGISTRY_TOKEN        the token, for `revoke`
  *   CRATES_TIMEOUT_MS           the limit for EACH request, request to last byte; default 30000
  *   READBACK_ATTEMPTS / READBACK_INTERVAL_MS   default 30 × 10000 (5 minutes)
+ *   CRATE_FILE                  this commit's `cargo package` output, for `readback`'s checksum
  *
  * The token is never printed: `::add-mask::` comes first, then it goes to GITHUB_ENV only.
  * `node:` builtins and `fetch` only.
  */
-import { appendFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { appendFileSync, readFileSync } from "node:fs";
 import process from "node:process";
 
 const command = process.argv[2];
@@ -123,7 +125,17 @@ if (command === "revoke") {
   process.exit(0);
 }
 
-// readback — FATAL unless crates.io serves VERSION, not yanked
+// readback — FATAL unless crates.io serves VERSION, not yanked, with the SAME bytes as the
+// package this commit makes (CRATE_FILE: its sha256 against crates.io's `checksum`; open items
+// before 1.0.1: the read-back never compared them). `cargo package` is reproducible: the 1.0.0 tag
+// repackaged in a fresh clone gave crates.io's checksum exactly (measured 2026-11-20).
+const crateFile = need("CRATE_FILE");
+let localSum = "";
+try {
+  localSum = createHash("sha256").update(readFileSync(crateFile)).digest("hex");
+} catch (e) {
+  fail(`cannot read the package ${crateFile}: ${(e as Error).message}`);
+}
 const attempts = Number(process.env.READBACK_ATTEMPTS ?? "30");
 const interval = Number(process.env.READBACK_INTERVAL_MS ?? "10000");
 let last = "";
@@ -132,7 +144,10 @@ for (let i = 1; i <= attempts; i++) {
   const v = r.json?.version;
   if (r.status === 200 && v?.num === version) {
     if (v.yanked) fail(`crates.io serves ${crate} ${version} but it is YANKED`);
-    console.log(`crates.io serves ${crate} ${version} (not yanked), attempt ${i}`);
+    if (v.checksum !== localSum) {
+      fail(`crates.io's ${crate} ${version} has checksum ${v.checksum ?? "(none)"}, this commit's package ${localSum}: NOT the same bytes`);
+    }
+    console.log(`crates.io serves ${crate} ${version} (not yanked, checksum ${localSum} matches), attempt ${i}`);
     process.exit(0);
   }
   last = `HTTP ${r.status}`;

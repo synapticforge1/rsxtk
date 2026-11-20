@@ -23,7 +23,8 @@ name: Release
 #   publish - id-token: write + contents: read, LAST. crates.io trusted publishing (owner's D2: no
 #             stored token): skip if crates.io already lists the version; GitHub OIDC -> a
 #             short-lived crates.io token; `cargo publish --no-verify` (no build: `checks`
-#             packaged and verify-built this commit); revoke the token; read back, FATAL.
+#             packaged and verify-built this commit); revoke the token; read back, FATAL — the
+#             version served, not yanked, its checksum = this commit's package.
 #
 # Every step is `run:`; there is no `uses:`. Pinned: Rust through the runner's rustup (it verifies
 # the signed channel manifest) — the SAME dated nightly the local gate runs on, so the package CI
@@ -237,5 +238,17 @@ jobs:
         if: always() && env.CARGO_REGISTRY_TOKEN != ''
         run: bun scripts/crates-io.ts revoke
 
+      # The read-back compares crates.io's checksum with THIS commit's package (open items before
+      # 1.0.1). `cargo publish` left it in target/package; a re-run that skipped the publish makes
+      # it again — `cargo package` is reproducible (the 1.0.0 tag repackaged in a fresh clone gave
+      # crates.io's checksum exactly, 2026-11-20) and with --no-verify builds nothing.
+      - name: This commit's package, for the checksum
+        run: |
+          f="target/package/$CRATE-$VERSION.crate"
+          [ -f "$f" ] || cargo package --locked --no-verify
+          sha256sum "$f"
+
       - name: Read back from crates.io (fatal)
+        env:
+          CRATE_FILE: target/package/${{ env.CRATE }}-${{ needs.checks.outputs.version }}.crate
         run: bun scripts/crates-io.ts readback
