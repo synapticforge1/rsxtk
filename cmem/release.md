@@ -123,9 +123,46 @@ re-run finishes it). After the first release publishes through it, delete the Gi
 
 ## Release History
 
-Every version on crates.io, newest first (37 versions, 13 not yanked — crates.io API,
-2026-11-12, after 0.5.2). Before 0.5.0 the repo kept no memory and its commit messages say
+Every version on crates.io, newest first (38 versions, 14 not yanked — crates.io API,
+2026-11-20, after 1.0.0). Before 0.5.0 the repo kept no memory and its commit messages say
 "update"; those entries hold what is known and say so.
+
+### 1.0.0 — 2026-11-20 (major) — the first release under the final review standard
+
+**Tested on: Windows 11 (win-x64)** · **Tested on: Ubuntu 26.04 LTS under WSL 2 (linux-x64)** ·
+Other platforms: not yet tested. Platforms verified: win-x64, full suite + every gate at 4f2afa6 and
+again by `release.ts` at 3abc9f4 (`cargo test` 75, `bun test scripts/` 76, clippy 0, `cargo audit`
+0); linux-x64 (Ubuntu 26.04.1 LTS, WSL 2), full suite at 78812de (`cargo test` 76 incl. the
+linux-only test, bun 75, clippy 0, every gate but `cargo audit`, which reads only the lockfile).
+
+**What changed (for users):** a module's folder is READ-ONLY to the guest unless `--allow-write`;
+`--max-memory <MiB>` (default 4096) is one budget for all guest memories and tables; `.cwasm` files
+are never run, and the `.rs` cache is a plain `.wasm` keyed by a fingerprint of the sources (not
+timestamps); wasmtime / wasmtime-wasi 40 → 50.0.3 (32 advisories gone; no C library added);
+`add` / `remove` edit only `[dependencies]` (every quoting and table form), refuse what they cannot
+edit safely, validate names and versions, and lock the script; `fmt` is honest about rustfmt
+(edition 2021); `init` never overwrites; atomic writes; `mod` refuses extra arguments; `bench -i 0`
+refused; README Privacy section. Release path: CI only publishes (H37 (e)); every gate local in
+`release.ts`, the review gate first; the Release page opens with the README's Tested on lines.
+**Why a major:** `bump.ts minor` was refused — one 0.5.2 test checks the removed `.cwasm` cache (a
+deliberate break) — and the owner chose 1.0.0 over teaching the gate 0.x (2026-11-20). 1.0.0 starts
+the API promise; a README Breaking Changes table is still to come (open-work 15).
+**Review:** the five required reviews and five re-review rounds (`review-process.md` § Last review);
+at "release", the H37 Tested on lines were added and the first linux-x64 run found and fixed two
+unix defects, each re-reviewed; `release.ts` then found `licences.txt` listing rsxtk itself (stale
+after every bump) — fixed in review tooling (63d71b6) and the bump redone.
+**How (owner: "release", level asked → minor, then 1.0.0):** pushed `3ea4d99` (run 44777844354: the
+new workflow, state none — version and state only), then `9be571b`; `bump.ts major` → `3abc9f4`;
+`release.ts` passed the review gate, the guards and the local gate and pushed `main` = `3abc9f4`, no
+tag. **Run 44779881233**, every job and step green, first attempt (UTC): `checks` 17:05:34–17:07:32
+(version, state new, `cargo package --locked`); `tag` 17:07:35–41 (annotated `rsxtk_v1.0.0`, object
+`50d5651`, tagger `github-actions[bot]`, → `3abc9f4`); `release` 17:07:44–49 (page "rsxtk 1.0.0" by
+`github-actions[bot]`, not a draft, `releases/latest`, opening with both Tested on lines);
+`publish` 17:07:52–08:11 (OIDC token, `cargo publish --no-verify`, revoked, read back).
+**Read back:** crates.io 1.0.0 created 17:08:06Z, not yanked, `MIT OR Apache-2.0`, 810,459 bytes;
+**`trustpub_data` = {github, synapticforge1/rsxtk, run 44779881233, sha `3abc9f4`}**.
+**As a user (U10):** `cargo install rsxtk --version =1.0.0 --locked` into a scratch root (351 s) →
+`rsxtk 1.0.0`; `run hello.wat` printed "hello from 1.0.0", exit 0; `run x.cwasm` refused, exit 1.
 
 ### 0.5.2 — 2026-11-12 (patch) — the first release in the owner's order
 

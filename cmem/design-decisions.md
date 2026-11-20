@@ -107,9 +107,10 @@ Dated; the reason travels with the rule. Created 2026-09-20 from `Cargo.toml` co
 ## Versioning and release (workspace rule, owner 2026-09-20)
 
 - Semantic Versioning 2.0.0: patch for fixes, minor for backward-compatible additions, major for
-  breaks; no cap, no carry. rsxtk is at `0.5.2` (released by CI 2026-11-12), so consumers' carets treat every minor as
-  potentially breaking until `1.0.0`, where its API promise begins. Keep a README Breaking Changes
-  table as the migration guide (none exists yet).
+  breaks; no cap, no carry. 🔒 **rsxtk is at `1.0.0`** (released by CI 2026-11-20; owner's choice
+  when the gate refused a 0.x minor): its API promise has begun — a removed or reshaped command,
+  option or behaviour needs `2.0.0`. Keep a README Breaking Changes table as the migration guide
+  (none exists yet — open-work 15). The gate has no 0.x rule: red previous-release tests need a major.
 - **A bump is gated** (workspace rule, `../workspace/cmem/layout-and-packaging.md` § "The
   compatibility gate"): rsxtk's surface is its CLI — flags, positional shapes, exit codes, output a script may
   parse. **The committed golden `surface.txt`** (every `--help` page, since 2026-11-12) and the
