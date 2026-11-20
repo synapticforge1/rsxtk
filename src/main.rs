@@ -217,9 +217,23 @@ fn run_wasm_mod(engine: &Engine, path: &Path, args: Vec<String>, sandbox: Sandbo
     }
 
     let mut results = vec![Val::I32(0); func_type.results().len()];
-    func.call(&mut store, &wasm_params, &mut results)?;
-    print_val_results(&results);
+    match func.call(&mut store, &wasm_params, &mut results) {
+        Ok(()) => print_val_results(&results),
+        // A guest that calls proc_exit (review 2, D3: `mod … _start` with exit 0 failed with a backtrace).
+        Err(e) => guest_exit(e)?,
+    }
     Ok(())
+}
+
+/// What a guest's trap means for rsxtk, the same in `run` and `mod`: `proc_exit(0)` is a clean
+/// finish; `proc_exit(N)` is the error "Exited status: N" (rsxtk exits 1, as 1.0.0 does — exit
+/// codes are part of the promised CLI); anything else is an error.
+fn guest_exit(e: wasmtime::Error) -> Result<()> {
+    match e.downcast::<wasmtime_wasi::I32Exit>() {
+        Ok(status) if status.0 == 0 => Ok(()),
+        Ok(status) => bail!("Exited status: {}", status.0),
+        Err(e) => Err(e.into()),
+    }
 }
 
 fn execute_module(engine: &Engine, module: Module, abs_path: &Path, sandbox: Sandbox) -> Result<()> {
@@ -227,13 +241,7 @@ fn execute_module(engine: &Engine, module: Module, abs_path: &Path, sandbox: San
     let instance = linker.instantiate(&mut store, &module)?;
 
     if let Some(func) = instance.get_func(&mut store, "_start") {
-        if let Err(e) = func.call(&mut store, &[], &mut []) {
-            match e.downcast::<wasmtime_wasi::I32Exit>() {
-                Ok(status) if status.0 == 0 => (),
-                Ok(status) => bail!("Exited status: {}", status.0),
-                Err(e) => return Err(e.into()),
-            }
-        }
+        if let Err(e) = func.call(&mut store, &[], &mut []) { guest_exit(e)?; }
     } else {
         println!("💡 Library module loaded.");
         print_info(engine, abs_path)?;
@@ -245,6 +253,9 @@ fn load_module(engine: &Engine, path: &Path) -> Result<Module> {
     let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
     match ext {
         "rs" => {
+            // The full path, so `info x.rs` and `run x.rs` key one cache (review 2: a relative path
+            // made them rebuild each other).
+            let path = &fs::canonicalize(path)?;
             let (artifact, _) = build_and_cache_script(engine, path)?;
             match Module::new(engine, &fs::read(&artifact)?) {
                 Ok(module) => Ok(module),
@@ -259,7 +270,7 @@ fn load_module(engine: &Engine, path: &Path) -> Result<Module> {
         },
         "wat" => {
             let bytes = fs::read(path)?;
-            Ok(Module::new(engine, &wat::parse_bytes(&bytes)?)?)
+            Ok(Module::new(engine, &wat::parse_bytes(without_bom(&bytes))?)?)
         },
         "wasm" => Ok(Module::new(engine, &fs::read(path)?)?),
         // A .cwasm is precompiled native code that the engine would run without validating it,
@@ -281,8 +292,12 @@ fn load_module(engine: &Engine, path: &Path) -> Result<Module> {
 /// A `build.rs` and an `rsc/` folder beside the script are mirrored with it. The cache is plain
 /// wasm, validated before it is written and again by `Module::new` on every run — never a `.cwasm`.
 fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<(PathBuf, PathBuf)> {
-    let stem = script_path.file_stem().unwrap().to_str().unwrap();
+    let stem = script_stem(script_path)?;
+    check_script_name(stem)?;
     let cache_root = std::env::current_dir()?.join(".tk").join(stem);
+    // One build of this cache at a time (review 2, D1: parallel runs of one script raced on the
+    // mirror and failed with "os error 32"); released when this function returns, before the guest runs.
+    let _build_lock = lock_cache(&cache_root, stem)?;
     let cached_path = cache_root.join(format!("{}.wasm", stem));
 
     let content = fs::read_to_string(script_path)?;
@@ -292,8 +307,8 @@ fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<(PathBu
             WASI scripts require a header block for dependencies.\n\
             💡 Fix: Run 'rsxtk add {} <crate>' or 'rsxtk fmt {}' to inject it.",
             script_path.display(),
-            script_path.file_name().unwrap().to_str().unwrap(),
-            script_path.file_name().unwrap().to_str().unwrap()
+            stem_file_name(script_path),
+            stem_file_name(script_path)
         );
     };
     let code = code.trim_start();
@@ -342,7 +357,8 @@ fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<(PathBu
 
     let status = std::process::Command::new("cargo")
         .env("CARGO_TARGET_DIR", cache_root.join("t"))
-        .args(["build", "--manifest-path", cache_root.join("Cargo.toml").to_str().unwrap(), "--target", "wasm32-wasip1", "--release"])
+        .arg("build").arg("--manifest-path").arg(cache_root.join("Cargo.toml"))
+        .args(["--target", "wasm32-wasip1", "--release"])
         .status()?;
 
     if !status.success() { bail!("Build failed."); }
@@ -361,6 +377,67 @@ fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<(PathBu
     let _ = fs::remove_file(cache_root.join("machine.id"));
 
     Ok((cached_path, wasm_output))
+}
+
+/// The script's file stem, which names its Cargo package and its `.tk/` folder. A name that is not
+/// valid UTF-8 is an error, not a panic (review 2, U2).
+fn script_stem(script_path: &Path) -> Result<&str> {
+    script_path.file_stem().and_then(|s| s.to_str())
+        .ok_or_else(|| anyhow!("❌ '{}': a script's file name must be valid UTF-8.", script_path.display()))
+}
+
+/// Text bytes without a leading UTF-8 byte-order mark, which Windows editors write (review 2: a
+/// `.wat` with one was refused while a `.rs` script with one was accepted).
+fn without_bom(bytes: &[u8]) -> &[u8] {
+    bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(bytes)
+}
+
+/// The file name, for messages.
+fn stem_file_name(path: &Path) -> String {
+    path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| path.display().to_string())
+}
+
+/// A script is built as a Cargo package named after its file, so its name must be one Cargo
+/// builds (review 2, C2: `init 2fib.rs` succeeded and `run` then failed with a raw Cargo error): a
+/// letter or `_` first, then letters, digits, `-` or `_`, and not one of the names Cargo keeps for
+/// its build folders. Measured 2026-11-20 with `cargo build` of 2021-edition packages: those four
+/// names and `2fib` / `my.script` fail; Rust keywords (`fn`, `self`, `try`, `gen`, …) BUILD, so they
+/// are allowed — refusing them would break names that work.
+fn check_script_name(stem: &str) -> Result<()> {
+    const CARGO_RESERVED: &[&str] = &["build", "deps", "examples", "incremental"];
+    let why = if !stem.starts_with(|c: char| c.is_alphabetic() || c == '_') {
+        Some("it must start with a letter or '_'")
+    } else if !stem.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
+        Some("it may hold only letters, digits, '-' and '_'")
+    } else if CARGO_RESERVED.contains(&stem) {
+        Some("Cargo reserves it for its build folders")
+    } else {
+        None
+    };
+    match why {
+        Some(why) => bail!("❌ '{}' cannot be a script name: rsxtk builds the script as a Cargo package named after the file, and {}. Rename it (for example 'my_{}.rs').", stem, why, stem.trim_start_matches(|c: char| !c.is_alphanumeric())),
+        None => Ok(()),
+    }
+}
+
+/// A lock on one script's build cache for as long as the returned file lives: a second `run`,
+/// `build` or `info` of the same script waits — saying so — instead of racing on the mirror. No
+/// time limit: the holder is a Cargo build, which has none (owner, 2026-11-20).
+fn lock_cache(cache_root: &Path, stem: &str) -> Result<fs::File> {
+    let tk = cache_root.parent().ok_or_else(|| anyhow!("no .tk folder for '{}'", cache_root.display()))?;
+    fs::create_dir_all(tk)?;
+    let lock_path = tk.join(format!("{}.lock", stem));
+    let file = fs::OpenOptions::new().create(true).truncate(false).write(true).open(&lock_path)
+        .map_err(|e| anyhow!("❌ could not open the build lock '{}': {}", lock_path.display(), e))?;
+    match file.try_lock() {
+        Ok(()) => {}
+        Err(fs::TryLockError::WouldBlock) => {
+            eprintln!("⏳ Another rsxtk run is building '{}'; waiting for it.", stem);
+            file.lock().map_err(|e| anyhow!("❌ could not lock '{}': {}", lock_path.display(), e))?;
+        }
+        Err(fs::TryLockError::Error(e)) => bail!("❌ could not lock '{}': {}", lock_path.display(), e),
+    }
+    Ok(file)
 }
 
 /// The `---`-fenced manifest and the code after it. A UTF-8 byte-order mark and blank lines may
@@ -393,19 +470,94 @@ fn split_manifest(content: &str) -> Result<Option<(String, String)>> {
 
 /// Writes `bytes` to `path` through a temporary file beside it and a rename, so an interrupted or
 /// failed write never leaves a half-written file, and readers see the old or the new file whole.
+/// An existing file keeps its permissions (an executable script stays executable), and a symlink
+/// is written THROUGH to its target, so the link stays a link (review 2, U1: both were lost).
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
-    let name = path.file_name().ok_or_else(|| anyhow!("'{}' has no file name", path.display()))?;
-    let tmp = path.with_file_name(format!(".{}.rsxtk-{}.tmp", name.to_string_lossy(), std::process::id()));
-    if let Err(e) = fs::write(&tmp, bytes).and_then(|_| fs::rename(&tmp, path)) {
+    let target = match fs::symlink_metadata(path) {
+        Ok(m) if m.file_type().is_symlink() => fs::canonicalize(path)
+            .map_err(|e| anyhow!("could not follow the link '{}': {}", path.display(), e))?,
+        _ => path.to_path_buf(),
+    };
+    let name = target.file_name().ok_or_else(|| anyhow!("'{}' has no file name", target.display()))?;
+    let tmp = target.with_file_name(format!(".{}.rsxtk-{}.tmp", name.to_string_lossy(), std::process::id()));
+    let perms = fs::metadata(&target).ok().map(|m| m.permissions());
+    let written = fs::write(&tmp, bytes)
+        .and_then(|_| match perms { Some(p) => fs::set_permissions(&tmp, p), None => Ok(()) })
+        .and_then(|_| fs::rename(&tmp, &target));
+    if let Err(e) = written {
         let _ = fs::remove_file(&tmp);
-        return Err(anyhow!("could not write '{}': {}", path.display(), e));
+        return Err(anyhow!("could not write '{}': {}", target.display(), e));
     }
     Ok(())
 }
 
-/// True when the code defines `fn main` (followed by optional whitespace and `(`).
+/// True when the code defines `fn main` (followed by optional whitespace and `(`) in CODE — not in
+/// a comment or a string (review 2, C1: a library whose doc comment said "`fn main()`" was built as
+/// a binary and failed with E0601).
 fn has_main_fn(code: &str) -> bool {
-    code.match_indices("fn main").any(|(i, m)| code[i + m.len()..].trim_start().starts_with('('))
+    let code = rust_code_only(code);
+    code.match_indices("fn main").any(|(i, m)| {
+        let starts_token = code[..i].chars().next_back().is_none_or(|c| !(c.is_alphanumeric() || c == '_'));
+        starts_token && code[i + m.len()..].trim_start().starts_with('(')
+    })
+}
+
+/// The code with every comment and string or char literal replaced by spaces (line breaks kept),
+/// so a search sees only Rust tokens: `//` and nested `/* */` comments; `"…"` and `b"…"` with
+/// escapes; raw strings `r"…"`, `r#"…"#`, `br#"…"#`; char literals `'x'`, `'\n'` (a lifetime such as
+/// `'a` is code and is kept).
+fn rust_code_only(code: &str) -> String {
+    let c: Vec<char> = code.chars().collect();
+    let mut out = String::with_capacity(code.len());
+    let blank = |out: &mut String, ch: char| out.push(if ch == '\n' { '\n' } else { ' ' });
+    let ident = |ch: char| ch.is_alphanumeric() || ch == '_';
+    let mut i = 0;
+    while i < c.len() {
+        let next = c.get(i + 1).copied();
+        if c[i] == '/' && next == Some('/') {
+            while i < c.len() && c[i] != '\n' { blank(&mut out, c[i]); i += 1; }
+        } else if c[i] == '/' && next == Some('*') {
+            let mut depth = 0;
+            while i < c.len() {
+                if c[i] == '/' && c.get(i + 1) == Some(&'*') { depth += 1; blank(&mut out, c[i]); blank(&mut out, c[i + 1]); i += 2; }
+                else if c[i] == '*' && c.get(i + 1) == Some(&'/') {
+                    depth -= 1; blank(&mut out, c[i]); blank(&mut out, c[i + 1]); i += 2;
+                    if depth == 0 { break; }
+                } else { blank(&mut out, c[i]); i += 1; }
+            }
+        } else if (c[i] == 'r' || (c[i] == 'b' && next == Some('r')))
+            && (i == 0 || !ident(c[i - 1]))
+            && { let s = if c[i] == 'b' { i + 2 } else { i + 1 }; let h = c[s..].iter().take_while(|&&x| x == '#').count(); c.get(s + h) == Some(&'"') }
+        {
+            // A raw string: r, then n hashes, a quote … a quote and n hashes.
+            let s = if c[i] == 'b' { i + 2 } else { i + 1 };
+            let hashes = c[s..].iter().take_while(|&&x| x == '#').count();
+            let mut j = s + hashes + 1;
+            while j < c.len() && !(c[j] == '"' && c[j + 1..].iter().take(hashes).filter(|&&x| x == '#').count() == hashes) { j += 1; }
+            let end = (j + 1 + hashes).min(c.len());
+            while i < end { blank(&mut out, c[i]); i += 1; }
+        } else if c[i] == '"' || (c[i] == 'b' && next == Some('"') && (i == 0 || !ident(c[i - 1]))) {
+            if c[i] == 'b' { blank(&mut out, c[i]); i += 1; }
+            blank(&mut out, c[i]); i += 1;
+            while i < c.len() && c[i] != '"' {
+                if c[i] == '\\' && i + 1 < c.len() { blank(&mut out, c[i]); i += 1; }
+                blank(&mut out, c[i]); i += 1;
+            }
+            if i < c.len() { blank(&mut out, c[i]); i += 1; }
+        } else if c[i] == '\'' && (next == Some('\\') || c.get(i + 2) == Some(&'\'')) {
+            // A char literal ('x' or an escape); a lifetime ('a without a closing quote) is code.
+            blank(&mut out, c[i]); i += 1;
+            while i < c.len() && c[i] != '\'' {
+                if c[i] == '\\' && i + 1 < c.len() { blank(&mut out, c[i]); i += 1; }
+                blank(&mut out, c[i]); i += 1;
+            }
+            if i < c.len() { blank(&mut out, c[i]); i += 1; }
+        } else {
+            out.push(c[i]);
+            i += 1;
+        }
+    }
+    out
 }
 
 /// What a cached module was built from: the script's path and bytes, the bytes of the `build.rs`
@@ -460,6 +612,8 @@ fn copy_dir_fresh(src: &Path, dst: &Path) -> Result<()> {
 
 fn init_script(name: &str, is_mod: bool) -> Result<()> {
     let filename = if name.ends_with(".rs") { name.to_string() } else { format!("{}.rs", name) };
+    // Only a name `run` can build (review 2, C2).
+    check_script_name(script_stem(Path::new(&filename))?)?;
     let content = if is_mod {
         "---\n[dependencies]\n---\n#[no_mangle]\npub extern \"C\" fn add(a: i32, b: i32) -> i32 {\n    a + b\n}"
     } else {
@@ -468,7 +622,7 @@ fn init_script(name: &str, is_mod: bool) -> Result<()> {
     // create_new: an existing file is never replaced (review H4).
     let mut file = match fs::OpenOptions::new().write(true).create_new(true).open(&filename) {
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-            bail!("❌ '{}' already exists; rsxtk init does not overwrite it.", filename)
+            bail!("❌ '{}' already exists; rsxtk {} does not overwrite it.", filename, if is_mod { "initmod" } else { "init" })
         }
         other => other?,
     };
@@ -533,7 +687,7 @@ fn convert_wasm_wat(input: &Path, output: Option<PathBuf>) -> Result<()> {
     if same_file(input, &out) {
         bail!("❌ The output '{}' is the input file; choose another name with -o.", out.display());
     }
-    let bytes = if is_wasm { wasmprinter::print_bytes(&data)?.into_bytes() } else { wat::parse_bytes(&data)?.into_owned() };
+    let bytes = if is_wasm { wasmprinter::print_bytes(&data)?.into_bytes() } else { wat::parse_bytes(without_bom(&data))?.into_owned() };
     write_atomic(&out, &bytes)?;
     println!("🔄 Converted to: {}", out.display());
     Ok(())
@@ -649,7 +803,6 @@ fn edit_manifest(manifest: &str, crate_name: &str, version: Option<&str>) -> Res
     let crate_subtable = format!("[dependencies.{}.", crate_name);
     let mut out: Vec<String> = Vec::new();
     let mut in_deps = false;
-    let mut has_deps = false;
     let mut in_crate_table = false; // inside `[dependencies.<crate>]`: dropped
     let mut deps_end: Option<usize> = None;
     let mut open_brackets = 0i32; // still inside a removed multi-line entry
@@ -672,7 +825,7 @@ fn edit_manifest(manifest: &str, crate_name: &str, version: Option<&str>) -> Res
             // table: spaces and both kinds of TOML key quotes are ignored (review B8: `'` was not).
             let header: String = t.chars().filter(|c| !matches!(c, ' ' | '\t' | '"' | '\'')).collect();
             in_deps = header == "[dependencies]";
-            if in_deps { deps_end = None; has_deps = true; }
+            if in_deps { deps_end = None; }
             // The crate's own table and its sub-tables (`[dependencies.serde.features]`, review B7).
             in_crate_table = !crate_name.is_empty() && (header == crate_table || header.starts_with(&crate_subtable));
             if !in_crate_table { out.push(line.to_string()); }
@@ -698,9 +851,9 @@ fn edit_manifest(manifest: &str, crate_name: &str, version: Option<&str>) -> Res
             }
             None => { out.insert(0, entry); out.insert(0, "[dependencies]".to_string()); }
         }
-    } else if !has_deps {
-        out.insert(0, "[dependencies]".to_string());
     }
+    // A `remove` never adds a `[dependencies]` table: removing an absent crate changes nothing
+    // (review 2: it inserted an empty table and said "Manifest updated").
     Ok(out.join("\n"))
 }
 
@@ -767,10 +920,34 @@ fn check_crate_name(name: &str) -> Result<()> {
 /// A version requirement goes between quotes in the manifest, so it may not contain a quote, a
 /// backslash or a line break.
 fn check_version(version: &str) -> Result<()> {
-    if version.trim().is_empty() || version.chars().any(|c| c == '"' || c == '\\' || c.is_control()) {
-        bail!("❌ '{}' is not a valid version requirement.", version.escape_debug());
+    if !is_version_req(version) {
+        bail!("❌ '{}' is not a valid version requirement (for example 1, 1.2, ^1.2.3, ~0.4, >=1, <2, *).", version.escape_debug());
     }
     Ok(())
+}
+
+/// A Cargo version requirement (review 2, C3: `add x banana` wrote `x = "banana"` and said
+/// success): `*`, or comma-separated comparators — an optional `^ ~ = > >= < <=`, then
+/// MAJOR[.MINOR[.PATCH]] where MINOR / PATCH may be `*` / `x`, an optional `-pre` and `+build`.
+fn is_version_req(req: &str) -> bool {
+    fn comparator(c: &str) -> bool {
+        let c = c.trim();
+        if c == "*" { return true; }
+        let c = [">=", "<=", "^", "~", "=", ">", "<"].iter()
+            .find_map(|op| c.strip_prefix(op)).unwrap_or(c).trim_start();
+        let (core, rest) = c.split_at(c.find(['-', '+']).unwrap_or(c.len()));
+        let label_ok = |s: &str| !s.is_empty() && s.split('.').all(|p| !p.is_empty() && p.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '-'));
+        let tail_ok = match rest.split_once('+') {
+            Some((pre, build)) => (pre.is_empty() || pre.strip_prefix('-').is_some_and(label_ok)) && label_ok(build),
+            None => rest.is_empty() || rest.strip_prefix('-').is_some_and(label_ok),
+        };
+        let parts: Vec<&str> = core.split('.').collect();
+        let numeric = |p: &str| !p.is_empty() && p.chars().all(|ch| ch.is_ascii_digit());
+        tail_ok && (1..=3).contains(&parts.len()) && numeric(parts[0])
+            && parts[1..].iter().all(|p| numeric(p) || matches!(*p, "*" | "x" | "X"))
+    }
+    !req.trim().is_empty() && !req.chars().any(|c| c == '"' || c == '\\' || c.is_control())
+        && req.split(',').all(comparator)
 }
 
 /// The crate a manifest line declares (`name = …`, `name.workspace = …`, `"name" = …`), if any.
@@ -858,21 +1035,44 @@ fn format_script(path: &Path) -> Result<()> {
 /// stdin and stdout — no temporary file. A failure (bad syntax, no rustfmt) is an error, never a
 /// silent success.
 fn rustfmt(code: &str) -> Result<String> {
-    use std::io::Write;
+    use std::io::{Read, Write};
     use std::process::{Command, Stdio};
     let mut child = Command::new("rustfmt")
         .args(["--edition", "2021"])
         .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped())
         .spawn()
         .map_err(|e| anyhow!("❌ rustfmt could not be started ({}). Install it: rustup component add rustfmt", e))?;
-    // rustfmt reads all of stdin before it writes, so writing first cannot deadlock.
-    child.stdin.take().ok_or_else(|| anyhow!("rustfmt's stdin is not available"))?.write_all(code.as_bytes())?;
-    let out = child.wait_with_output()?;
-    if !out.status.success() {
-        bail!("❌ rustfmt failed ({}):\n{}", out.status, String::from_utf8_lossy(&out.stderr).trim());
+    // Feed stdin and drain stdout / stderr on their own threads, so this thread can watch the
+    // clock: rustfmt has a time limit (review 2, D2 — it ran past 60 s on deeply nested code while
+    // holding the script's lock; the owner's no-time-limit rule covers guests and Cargo builds).
+    let mut stdin = child.stdin.take().ok_or_else(|| anyhow!("rustfmt's stdin is not available"))?;
+    let mut stdout = child.stdout.take().ok_or_else(|| anyhow!("rustfmt's stdout is not available"))?;
+    let mut stderr = child.stderr.take().ok_or_else(|| anyhow!("rustfmt's stderr is not available"))?;
+    let input = code.to_owned();
+    let feeder = std::thread::spawn(move || { let _ = stdin.write_all(input.as_bytes()); });
+    let out_reader = std::thread::spawn(move || { let mut v = Vec::new(); let _ = stdout.read_to_end(&mut v); v });
+    let err_reader = std::thread::spawn(move || { let mut v = Vec::new(); let _ = stderr.read_to_end(&mut v); v });
+    let deadline = Instant::now() + RUSTFMT_LIMIT;
+    let status = loop {
+        if let Some(status) = child.try_wait()? { break status; }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            bail!("❌ rustfmt did not finish within {} s and was stopped.", RUSTFMT_LIMIT.as_secs());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    };
+    let _ = feeder.join();
+    let out = out_reader.join().map_err(|_| anyhow!("reading rustfmt's output failed"))?;
+    let err = err_reader.join().map_err(|_| anyhow!("reading rustfmt's errors failed"))?;
+    if !status.success() {
+        bail!("❌ rustfmt failed ({}):\n{}", status, String::from_utf8_lossy(&err).trim());
     }
-    Ok(String::from_utf8(out.stdout)?)
+    Ok(String::from_utf8(out)?)
 }
+
+/// How long `fmt` lets rustfmt run.
+const RUSTFMT_LIMIT: std::time::Duration = std::time::Duration::from_secs(120);
 
 /// True when both paths name one existing file.
 fn same_file(a: &Path, b: &Path) -> bool {

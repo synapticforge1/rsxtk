@@ -553,6 +553,160 @@ fn csrun_missing_file_fails() {
     assert_fails(&rsxtk(&workdir("csrun_missing"), &["csrun", "nope.rs"]));
 }
 
+// --- review 2 (before 1.0.1) ---
+
+#[test]
+fn a_library_whose_comment_mentions_fn_main_is_still_a_library() {
+    // C1: `fn main()` inside a comment or a string made the script build as a binary (E0601).
+    let dir = workdir("r2_c1_comment_main");
+    fs::write(dir.join("lib.rs"), "---\n[dependencies]\n---\n// the old version had `fn main() {}` here\nconst NOTE: &str = \"fn main( is not here\";\n#[no_mangle]\npub extern \"C\" fn add(a: i32, b: i32) -> i32 { a + b }\n").unwrap();
+    let out = rsxtk(&dir, &["mod", "lib.rs", "add", "2", "3"]);
+    assert_ok(&out);
+    assert_eq!(stdout(&out).trim(), "5");
+}
+
+#[test]
+fn script_names_cargo_cannot_build_are_refused_by_init_and_run() {
+    // C2: `init 2fib` succeeded and `run` then failed inside Cargo with a raw error.
+    let dir = workdir("r2_c2_names");
+    for name in ["2fib", "my.script", "build", "deps"] {
+        let out = rsxtk(&dir, &["init", name]);
+        assert_fails(&out);
+        assert!(stderr(&out).contains("cannot be a script name"), "{}: {}", name, stderr(&out));
+        assert!(!dir.join(format!("{}.rs", name)).exists(), "{} was created", name);
+    }
+    fs::write(dir.join("2fib.rs"), SCRIPT).unwrap();
+    let run = rsxtk(&dir, &["run", "2fib.rs"]);
+    assert_fails(&run);
+    assert!(stderr(&run).contains("cannot be a script name"), "{}", stderr(&run));
+    // Names Cargo builds stay allowed — Rust keywords among them (measured: `fn`, `try` build).
+    for ok in ["my-tool", "fn", "try", "_x"] { assert_ok(&rsxtk(&dir, &["init", ok])); }
+}
+
+#[test]
+fn add_accepts_only_cargo_version_requirements() {
+    // C3: `add x banana` wrote `x = "banana"` and reported success.
+    let dir = workdir("r2_c3_versions");
+    fs::write(dir.join("s.rs"), SCRIPT).unwrap();
+    for bad in ["banana", "1.0 foo", "1..2", "v1", ">=", "1.2.3.4", "1.0-", "1.0+"] {
+        let out = rsxtk(&dir, &["add", "s.rs", "itoa", bad]);
+        assert_fails(&out);
+        assert!(stderr(&out).contains("not a valid version requirement"), "{}: {}", bad, stderr(&out));
+    }
+    assert_eq!(fs::read_to_string(dir.join("s.rs")).unwrap(), SCRIPT);
+    for good in ["1", "1.2", "^1.2.3", "~0.4", ">=1, <2", "*", "1.*", "=1.0.0-alpha.1", "1.0.0+build.5"] {
+        assert_ok(&rsxtk(&dir, &["add", "s.rs", "itoa", good]));
+        assert!(fs::read_to_string(dir.join("s.rs")).unwrap().contains(&format!("itoa = \"{}\"", good)), "{}", good);
+    }
+}
+
+#[test]
+fn a_second_run_waits_for_the_build_lock() {
+    // D1: parallel runs of one script raced on the `.tk` mirror ("os error 32"). Holding the build
+    // lock (`.tk/<stem>.lock`) must make `run` wait, say so, and then succeed.
+    let dir = workdir("r2_d1_build_lock");
+    fs::write(dir.join("q.rs"), SCRIPT).unwrap();
+    fs::create_dir_all(dir.join(".tk")).unwrap();
+    let held = fs::OpenOptions::new().create(true).truncate(false).write(true).open(dir.join(".tk/q.lock")).unwrap();
+    held.lock().unwrap();
+    let child = Command::new(env!("CARGO_BIN_EXE_rsxtk")).args(["run", "q.rs"]).current_dir(&dir)
+        .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn().unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    assert!(!dir.join(".tk/q/q.wasm").exists(), "built while the lock was held");
+    held.unlock().unwrap();
+    let out = child.wait_with_output().unwrap();
+    assert_ok(&out);
+    assert_eq!(stdout(&out), "script ran\n");
+    assert!(stderr(&out).contains("is building 'q'; waiting"), "{}", stderr(&out));
+}
+
+/// A WASI `_start` that calls `proc_exit(N)`.
+fn exit_wat(n: i32) -> String {
+    format!(r#"(module
+  (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
+  (memory (export "memory") 1)
+  (func (export "_start") (call $exit (i32.const {}))))
+"#, n)
+}
+
+#[test]
+fn a_guest_exit_is_handled_the_same_in_run_and_mod() {
+    // D3: `mod e.wat _start` with proc_exit(0) failed with a backtrace (exit 1). Now `mod` handles a
+    // guest exit as `run` does: status 0 is success; status N is "Exited status: N", exit 1 (as in
+    // 1.0.0 — exit codes are part of the promised CLI).
+    let dir = workdir("r2_d3_exit");
+    fs::write(dir.join("zero.wat"), exit_wat(0)).unwrap();
+    fs::write(dir.join("seven.wat"), exit_wat(7)).unwrap();
+    assert_ok(&rsxtk(&dir, &["run", "zero.wat"]));
+    assert_ok(&rsxtk(&dir, &["mod", "zero.wat", "_start"]));
+    for args in [&["run", "seven.wat"][..], &["mod", "seven.wat", "_start"][..]] {
+        let out = rsxtk(&dir, args);
+        assert_eq!(out.status.code(), Some(1), "{:?}: {}", args, stderr(&out));
+        assert!(stderr(&out).contains("Exited status: 7"), "{}", stderr(&out));
+        assert!(!stderr(&out).contains("backtrace"), "{}", stderr(&out));
+    }
+}
+
+#[test]
+fn a_wat_file_with_a_byte_order_mark_runs() {
+    let dir = workdir("r2_wat_bom");
+    fs::write(dir.join("hello.wat"), format!("\u{feff}{}", HELLO_WAT)).unwrap();
+    let out = rsxtk(&dir, &["run", "hello.wat"]);
+    assert_ok(&out);
+    assert_eq!(stdout(&out), "Hello, Rosetta Code!\n");
+}
+
+#[test]
+fn info_and_run_share_one_cache() {
+    // `info x.rs` keyed the cache by the relative path, so it and `run` rebuilt each other.
+    let dir = workdir("r2_info_cache");
+    fs::write(dir.join("x.rs"), SCRIPT).unwrap();
+    assert_ok(&rsxtk(&dir, &["info", "x.rs"]));
+    let id = fs::read_to_string(dir.join(".tk/x/source.id")).unwrap();
+    assert_ok(&rsxtk(&dir, &["run", "x.rs"]));
+    assert_eq!(fs::read_to_string(dir.join(".tk/x/source.id")).unwrap(), id, "run rebuilt after info");
+}
+
+#[test]
+fn remove_of_an_absent_crate_never_adds_a_dependencies_table() {
+    let dir = workdir("r2_remove_no_table");
+    let original = "---\n[build-dependencies]\ncc = \"1\"\n---\nfn main() {}\n";
+    fs::write(dir.join("t.rs"), original).unwrap();
+    let out = rsxtk(&dir, &["remove", "t.rs", "serde"]);
+    assert_ok(&out);
+    assert!(stdout(&out).contains("nothing changed"), "{}", stdout(&out));
+    assert_eq!(fs::read_to_string(dir.join("t.rs")).unwrap(), original);
+}
+
+/// [linux-x64, linux-arm64] `add` keeps an executable script executable and writes THROUGH a
+/// symlink (review 2, U1: the mode dropped to 0644 and the link was replaced by a file).
+#[cfg(target_os = "linux")]
+#[test]
+fn add_keeps_the_scripts_mode_and_its_symlink() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = workdir("r2_u1_mode_link");
+    fs::write(dir.join("real.rs"), SCRIPT).unwrap();
+    fs::set_permissions(dir.join("real.rs"), fs::Permissions::from_mode(0o755)).unwrap();
+    std::os::unix::fs::symlink("real.rs", dir.join("link.rs")).unwrap();
+    assert_ok(&rsxtk(&dir, &["add", "link.rs", "itoa", "1"]));
+    assert!(fs::symlink_metadata(dir.join("link.rs")).unwrap().file_type().is_symlink(), "the link became a file");
+    assert!(fs::read_to_string(dir.join("real.rs")).unwrap().contains("itoa = \"1\""));
+    assert_eq!(fs::metadata(dir.join("real.rs")).unwrap().permissions().mode() & 0o777, 0o755);
+}
+
+/// [linux-x64, linux-arm64] A script name that is not UTF-8 is a named error, not a panic (U2).
+#[cfg(target_os = "linux")]
+#[test]
+fn a_non_utf8_script_name_is_an_error_not_a_panic() {
+    use std::os::unix::ffi::OsStrExt;
+    let dir = workdir("r2_u2_non_utf8");
+    let name = std::ffi::OsStr::from_bytes(b"\xffbad.rs");
+    fs::write(dir.join(name), SCRIPT).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_rsxtk")).arg("run").arg(name).current_dir(&dir).output().unwrap();
+    assert_eq!(out.status.code(), Some(1), "stderr:\n{}", stderr(&out));
+    assert!(stderr(&out).contains("must be valid UTF-8"), "{}", stderr(&out));
+}
+
 // --- review 0.6.0: security ---
 
 /// Creates `out.txt` in its folder (preopen fd 3) and writes "hi"; exits with path_open's errno.

@@ -108,14 +108,14 @@ rsxtk csrun my_script.rs
 | `csrun` | `rsxtk csrun <file>` | Runs file natively via `cargo -Z script`. |
 | `build` | `rsxtk build <file> <target>` | Builds a script to `wasi` or `wasm` (writes `<file>.wasm`), or `wat` (also writes `<file>.wat`). |
 | `convert` | `rsxtk convert <input> [-o <output>]` | Converts `.wasm` ⇄ `.wat` (an output naming the input is refused). |
-| `init` | `rsxtk init <name>` | Creates a new script with a manifest header (never overwrites an existing file). |
+| `init` | `rsxtk init <name>` | Creates a new script with a manifest header (never overwrites an existing file). The name becomes the script's Cargo package name, so it starts with a letter or `_` and holds only letters, digits, `-` and `_` (not `build`, `deps`, `examples`, `incremental`); `run` refuses other names with the same message. |
 | `initmod` | `rsxtk initmod <name>` | Creates a new library-module template (exports `add`); call it with `rsxtk mod <name>.rs add 2 3`. A script without `fn main` is built as a library. |
 | `resource` | `rsxtk resource [dir]` | Creates an `rsc/` folder for local assets (default: current directory). |
 | `bench` | `rsxtk bench <file> [-i <n>]` | Runs the file `n` times (default 5) and prints the average time. |
-| `add` | `rsxtk add <file> <crate> [version]` | Adds a dependency to the script manifest (latest version if omitted). |
+| `add` | `rsxtk add <file> <crate> [version]` | Adds a dependency to the script manifest (latest version if omitted). The version is a Cargo version requirement such as `1`, `1.2`, `^1.2.3`, `~0.4`, `>=1, <2` or `*`. |
 | `remove` | `rsxtk remove <file> <crate>` | Removes a dependency from the script manifest. |
 | `list` | `rsxtk list <file>` | Lists current dependencies in the script. |
-| `fmt` | `rsxtk fmt <file>` | Formats the Rust code inside the script with `rustfmt` (edition 2021), preserving the manifest; if rustfmt fails, the file is left unchanged. |
+| `fmt` | `rsxtk fmt <file>` | Formats the Rust code inside the script with `rustfmt` (edition 2021), preserving the manifest; if rustfmt fails or runs longer than 2 minutes, the file is left unchanged. |
 | `optimize` | `rsxtk optimize -i <input> [-o <output>]` | Rewrites a `.wasm` through Walrus (overwrites the input if `-o` is omitted). |
 | `clean` | `rsxtk clean` | Wipes the `.tk` build cache. |
 | `info` | `rsxtk info <file>` | Shows exported functions with their signatures, and whether the module uses WASI. |
