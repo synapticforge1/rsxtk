@@ -45,3 +45,6 @@ Numbers are stable and never reused. Read only when the owner asks about past wo
   (`review-process.md` § Last review).
 - **15** — 1.0.0 released (owner: "Release as 1.0.0"); the README Breaking Changes table for 1.0.0
   written (`1e75f45`, `868a4aa`), going out with 1.0.1.
+- **11** — the old crates.io token retired (owner): the repo secret `CARGO_REGISTRY_TOKEN` deleted on
+  GitHub and the API token revoked on crates.io. Not verifiable without the owner's sign-in.
+  Publishing is trusted publishing only (1.0.1's `trustpub_data`, `release.md`).
