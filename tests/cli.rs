@@ -1070,6 +1070,26 @@ fn a_cache_others_could_write_is_rebuilt_private() {
     assert_eq!(stdout(&out), "script ran\n", "the planted module ran");
     assert!(!cache.join("planted").exists());
     assert_eq!(fs::metadata(&cache).unwrap().permissions().mode() & 0o777, 0o700);
+    // A removal that fails part-way leaves the folder OPEN, so every later run refuses it instead
+    // of trusting what is left (re-review 17: it was made 0700 first, and the next run loaded the
+    // planted module). A read-only subfolder with a file in it makes the removal fail.
+    fs::set_permissions(&cache, fs::Permissions::from_mode(0o775)).unwrap();
+    fs::write(cache.join("s.wasm"), wat::parse_str(HELLO_WAT).unwrap()).unwrap();
+    let blocker = cache.join("aaa-blocker");
+    fs::create_dir_all(&blocker).unwrap();
+    fs::write(blocker.join("f"), "x").unwrap();
+    fs::set_permissions(&blocker, fs::Permissions::from_mode(0o555)).unwrap();
+    for _ in 0..2 {
+        let out = rsxtk(&dir, &["run", "s.rs"]);
+        assert_fails(&out);
+        assert!(stderr(&out).contains("could not remove"), "{}", stderr(&out));
+        assert!(!stdout(&out).contains("Hello"), "the planted module ran");
+        assert_eq!(fs::metadata(&cache).unwrap().permissions().mode() & 0o777, 0o775, "tightened after a failed removal");
+    }
+    fs::set_permissions(&blocker, fs::Permissions::from_mode(0o755)).unwrap();
+    let out = rsxtk(&dir, &["run", "s.rs"]);
+    assert_ok(&out);
+    assert_eq!(stdout(&out), "script ran\n");
 }
 
 /// A link to a FOLDER in `rsc/` stops the run with an error naming it (re-review 16: a bare "Is a

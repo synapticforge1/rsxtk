@@ -479,10 +479,15 @@ fn lock_cache(cache_root: &Path, stem: &str) -> Result<fs::File> {
 /// A cache others COULD write (group- or world-writable) cannot be trusted, so it is removed and
 /// rebuilt — once; a 1.0.0 cache made under umask 022 (0755) is only tightened. Called with the
 /// build lock held. [win-x64, win-arm64] Created only: access is the folder's ACL.
+///
+/// Defence in depth, not a boundary: whoever can write the PROJECT folder can edit the script or
+/// add a `build.rs` (native code at build time), and can swap `.tk` entries between rsxtk's checks
+/// and its use (re-review 17, F2/F3). rsxtk cannot protect a user from people who can write the
+/// folder the script lives in; README says so.
 fn private_cache(cache_root: &Path) -> Result<()> {
     let existed = cache_root.exists();
     fs::create_dir_all(cache_root)
-        .map_err(|e| anyhow!("❌ could not create the cache folder '{}': {}", cache_root.display(), e))?;
+        .map_err(|e| anyhow!("❌ could not create the cache folder '{}': {}. If something else has that name, remove it.", cache_root.display(), e))?;
     #[cfg(not(unix))]
     let _ = existed;
     #[cfg(unix)]
@@ -490,19 +495,23 @@ fn private_cache(cache_root: &Path) -> Result<()> {
         use std::os::unix::fs::PermissionsExt;
         let mode = fs::metadata(cache_root)?.permissions().mode();
         // Changing the mode proves the folder is ours (it fails for anyone else, root aside).
-        let make_private = || fs::set_permissions(cache_root, fs::Permissions::from_mode(0o700)).map_err(|e| match e.raw_os_error() {
+        let set_mode = |m: u32| fs::set_permissions(cache_root, fs::Permissions::from_mode(m)).map_err(|e| match e.raw_os_error() {
             Some(1) => anyhow!("❌ '{}' is not yours ({}); remove it and run again.", cache_root.display(), e),
             _ => anyhow!("❌ could not make '{}' private: {}", cache_root.display(), e),
         });
-        make_private()?;
         // A folder made just now (under umask 002 it is 0775) held nothing anyone could plant.
         if existed && mode & 0o022 != 0 {
+            // Proved ours WITHOUT tightening first (the same mode again): if the removal then fails
+            // part-way, the folder keeps its open mode, so the next run removes it again instead of
+            // trusting what is left (re-review 17: tightened first, a failed removal left a planted
+            // module that the next run, seeing 0700, loaded).
+            set_mode(mode & 0o7777)?;
             eprintln!("🔒 '{}' could be written by other users; rebuilding it as a private cache.", cache_root.display());
             fs::remove_dir_all(cache_root)
                 .map_err(|e| anyhow!("❌ could not remove '{}' (other users could write it): {}. Remove it and run again.", cache_root.display(), e))?;
             fs::create_dir(cache_root)?;
-            make_private()?;
         }
+        set_mode(0o700)?;
     }
     Ok(())
 }
