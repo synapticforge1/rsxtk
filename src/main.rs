@@ -486,7 +486,17 @@ fn lock_cache(cache_root: &Path, stem: &str) -> Result<fs::File> {
 /// folder the script lives in; README says so.
 fn private_cache(cache_root: &Path) -> Result<()> {
     let existed = cache_root.exists();
-    fs::create_dir_all(cache_root)
+    // [linux-x64, linux-arm64, mac-x64, mac-arm64] Made 0700 from the start: under umask 002 a
+    // folder made at the umask's mode was 0775 until the chmod below, a window in which a group
+    // member could plant a module (re-review 18). Elsewhere a plain create.
+    let new_private_dir = |path: &Path, recursive: bool| -> std::io::Result<()> {
+        let mut builder = fs::DirBuilder::new();
+        builder.recursive(recursive);
+        #[cfg(unix)]
+        std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+        builder.create(path)
+    };
+    new_private_dir(cache_root, true)
         .map_err(|e| anyhow!("❌ could not create the cache folder '{}': {}. If something else has that name, remove it.", cache_root.display(), e))?;
     #[cfg(not(unix))]
     let _ = existed;
@@ -509,7 +519,7 @@ fn private_cache(cache_root: &Path) -> Result<()> {
             eprintln!("🔒 '{}' could be written by other users; rebuilding it as a private cache.", cache_root.display());
             fs::remove_dir_all(cache_root)
                 .map_err(|e| anyhow!("❌ could not remove '{}' (other users could write it): {}. Remove it and run again.", cache_root.display(), e))?;
-            fs::create_dir(cache_root)?;
+            new_private_dir(cache_root, false)?;
         }
         set_mode(0o700)?;
     }
