@@ -162,7 +162,9 @@ export function parseArgs(argv: string[]): { commits: string | undefined } {
 }
 
 function git(args: string[]): string {
-  const r = spawnSync("git", args, { encoding: "utf8", maxBuffer: 1 << 28 });
+  // A time limit like every other subprocess (review N4): a stalled git cannot hang the gate.
+  const r = spawnSync("git", args, { encoding: "utf8", maxBuffer: 1 << 28, timeout: 120_000 });
+  if (r.status === null && r.signal !== null) throw new Error(`git ${args.join(" ")} was killed after 2 minutes`);
   if (r.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${r.stderr.trim()}`);
   return r.stdout;
 }

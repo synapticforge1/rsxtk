@@ -184,7 +184,7 @@ When you run a `.rs` file, `rsxtk` creates a hidden virtual Cargo project in the
 
 ## 🔒 Privacy
 
-`rsxtk` collects nothing and sends no telemetry. Its one network request of its own is `rsxtk add <file> <crate>` without a version, which asks crates.io for that crate's latest version (sending the crate name and an `rsxtk/<version>` User-Agent). Building a script runs `cargo`, which downloads the script's dependencies from crates.io as usual. Build output stays on your machine, in `.tk/` in the current folder; `rsxtk clean` removes it.
+`rsxtk` collects nothing and sends no telemetry. Its one network request of its own is `rsxtk add <file> <crate>` without a version, which asks crates.io for that crate's latest version (sending the crate name and the User-Agent `rsxtk/<version> (+https://github.com/synapticforge1/rsxtk)`). Building a script runs `cargo`, which downloads the script's dependencies from crates.io as usual. Build output stays on your machine, in `.tk/` in the current folder; `rsxtk clean` removes it. `add`, `remove` and `fmt` take a lock per script — an empty file named by a hash of the script's path, in `rsxtk-locks` in your system temp folder — so two runs on one script never lose each other's edits.
 
 ---
 

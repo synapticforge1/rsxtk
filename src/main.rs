@@ -90,7 +90,12 @@ fn new_store(engine: &Engine, module_path: &Path, sandbox: Sandbox) -> Result<(L
     builder.inherit_stdio().inherit_args();
     let perms = if sandbox.allow_write { FsPerms::ReadWrite } else { FsPerms::ReadOnly };
     builder.preopened_dir(module_path.parent().unwrap(), ".", perms)?;
-    let limits = StoreLimitsBuilder::new().memory_size(sandbox.max_memory_bytes).build();
+    // Tables are host memory too (review N1: `table.grow` took 19.5 GB under a 64 MiB cap): a
+    // table may hold at most max-memory / 16 elements, about the host bytes per element.
+    let limits = StoreLimitsBuilder::new()
+        .memory_size(sandbox.max_memory_bytes)
+        .table_elements(sandbox.max_memory_bytes / 16)
+        .build();
     let mut store = Store::new(engine, MyState { wasi: builder.build_p1(), limits });
     store.limiter(|state| &mut state.limits);
     Ok((linker, store))
@@ -521,36 +526,68 @@ fn run_cargo_script(path: &Path) -> Result<()> {
 fn edit_deps(path: &Path, crate_name: &str, version: Option<&str>) -> Result<()> {
     check_crate_name(crate_name)?;
     if let Some(v) = version { check_version(v)?; }
+    let _lock = lock_script(path)?;
     let content = fs::read_to_string(path)?;
     // No manifest yet: one is injected in front of the code (the BOM, if any, is dropped).
     let (manifest, code) = split_manifest(&content)?.unwrap_or_else(|| {
         (String::from("[dependencies]\n"), content.strip_prefix('\u{feff}').unwrap_or(&content).to_string())
     });
-    let manifest = edit_manifest(&manifest, crate_name, version);
-    write_atomic(path, format!("---\n{}\n---\n{}", manifest.trim(), code.trim_start()).as_bytes())?;
+    let edited = edit_manifest(&manifest, crate_name, version);
+    if version.is_none() && edited.trim() == manifest.trim() {
+        println!("ℹ️ '{}' is not in the [dependencies] of {}; nothing changed.", crate_name, path.display());
+        return Ok(());
+    }
+    write_atomic(path, format!("---\n{}\n---\n{}", edited.trim(), code.trim_start()).as_bytes())?;
     println!("✅ Manifest updated in {}", path.display());
     Ok(())
+}
+
+/// An exclusive lock on one script for as long as the returned file lives, so parallel `add`,
+/// `remove` and `fmt` runs on it queue instead of losing each other's edits (review N3). The lock
+/// is an empty file in the system temp folder, `rsxtk-locks/<hash of the script's full path>.lock`;
+/// it is kept afterwards, because deleting a lock file other processes may be waiting on races.
+fn lock_script(path: &Path) -> Result<fs::File> {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    fs::canonicalize(path)?.hash(&mut h);
+    let dir = std::env::temp_dir().join("rsxtk-locks");
+    fs::create_dir_all(&dir)?;
+    let file = fs::OpenOptions::new().create(true).truncate(false).write(true)
+        .open(dir.join(format!("{:016x}.lock", h.finish())))?;
+    file.lock()?;
+    Ok(file)
 }
 
 /// The manifest with `crate_name` removed from its `[dependencies]` table and, given a version,
 /// added at the END OF THAT TABLE (a `[dependencies]` table is created first if there is none).
 /// Every other table — `[build-dependencies]`, `[features]`, `[target.…]` — is kept as it is. An
-/// entry spanning several lines (`x = { … \n … }`) is removed whole.
+/// entry spanning several lines (`x = { … \n … }`) is removed whole, and so is the table form
+/// `[dependencies.<crate>]` with its lines (review B6: it was left in place, so `add` wrote a
+/// duplicate key and `remove` removed nothing).
 fn edit_manifest(manifest: &str, crate_name: &str, version: Option<&str>) -> String {
+    let crate_table = format!("[dependencies.{}]", crate_name);
     let mut out: Vec<String> = Vec::new();
     let mut in_deps = false;
+    let mut has_deps = false;
+    let mut in_crate_table = false; // inside `[dependencies.<crate>]`: dropped
     let mut deps_end: Option<usize> = None;
     let mut open_brackets = 0i32; // still inside a removed multi-line entry
     for line in manifest.lines() {
-        let t = line.trim();
+        // The line without its comment (review N2: `[dependencies] # deps` was not recognised, and
+        // a `[` inside a comment or a string threw the bracket count off and deleted later lines).
+        let t = toml_code(line).trim();
         if open_brackets > 0 { open_brackets += bracket_balance(t); continue; }
         if t.starts_with('[') { // a table header: `[x]` or `[[x]]`
             if in_deps { deps_end = Some(out.len()); }
-            in_deps = t == "[dependencies]";
-            if in_deps { deps_end = None; }
-            out.push(line.to_string());
+            // `[dependencies.serde]`, `[ dependencies . "serde" ]` and the like name one table.
+            let header: String = t.chars().filter(|c| *c != ' ' && *c != '"').collect();
+            in_deps = header == "[dependencies]";
+            if in_deps { deps_end = None; has_deps = true; }
+            in_crate_table = !crate_name.is_empty() && header == crate_table;
+            if !in_crate_table { out.push(line.to_string()); }
             continue;
         }
+        if in_crate_table { continue; }
         if in_deps && dep_key(t) == Some(crate_name) {
             open_brackets = bracket_balance(t).max(0);
             continue;
@@ -567,16 +604,51 @@ fn edit_manifest(manifest: &str, crate_name: &str, version: Option<&str>) -> Str
             }
             None => { out.insert(0, entry); out.insert(0, "[dependencies]".to_string()); }
         }
-    } else if !out.iter().any(|l| l.trim() == "[dependencies]") {
+    } else if !has_deps {
         out.insert(0, "[dependencies]".to_string());
     }
     out.join("\n")
 }
 
-/// Opening minus closing `{` / `[` brackets on a manifest line (strings are not special-cased:
-/// crate entries do not put brackets inside their strings).
+/// Opening minus closing `{` / `[` brackets on a manifest line, outside strings and comments.
 fn bracket_balance(line: &str) -> i32 {
-    line.chars().map(|c| match c { '{' | '[' => 1, '}' | ']' => -1, _ => 0 }).sum()
+    let mut balance = 0;
+    toml_scan(line, |c| match c { '{' | '[' => balance += 1, '}' | ']' => balance -= 1, _ => {} });
+    balance
+}
+
+/// The part of a manifest line before its `#` comment (a `#` inside a string does not count).
+fn toml_code(line: &str) -> &str {
+    let mut end = line.len();
+    // The scan stops at the first `#` outside a string, so this sees at most one.
+    toml_scan_with_index(line, |i, c| if c == '#' { end = i; });
+    &line[..end]
+}
+
+/// Calls `f` for every character of `line` that is outside a TOML string, up to a comment.
+fn toml_scan(line: &str, mut f: impl FnMut(char)) {
+    toml_scan_with_index(line, |_, c| if c != '#' { f(c) });
+}
+
+/// Calls `f(byte index, char)` for every character outside a TOML string (basic `"…"` with
+/// escapes, literal `'…'`), including the `#` that starts a comment, then stops there.
+fn toml_scan_with_index(line: &str, mut f: impl FnMut(usize, char)) {
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+    for (i, c) in line.char_indices() {
+        match quote {
+            Some(q) => {
+                if escaped { escaped = false; }
+                else if q == '"' && c == '\\' { escaped = true; }
+                else if c == q { quote = None; }
+            }
+            None => {
+                if c == '"' || c == '\'' { quote = Some(c); continue; }
+                f(i, c);
+                if c == '#' { return; }
+            }
+        }
+    }
 }
 
 /// A crate name as crates.io allows it: an ASCII letter, then letters, digits, `-` or `_`, at most
@@ -662,6 +734,7 @@ fn list_deps(path: &Path) -> Result<()> {
 }
 
 fn format_script(path: &Path) -> Result<()> {
+    let _lock = lock_script(path)?;
     let content = fs::read_to_string(path)?;
     let (manifest, code) = match split_manifest(&content)? {
         Some(parts) => parts,

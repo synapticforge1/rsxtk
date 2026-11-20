@@ -616,6 +616,98 @@ fn remove_takes_a_multi_line_entry_whole() {
 }
 
 #[test]
+fn add_and_remove_understand_the_dependencies_table_form() {
+    // Review B6: `[dependencies.serde]` was left in place — `add` wrote a duplicate key (cargo
+    // refuses it) and `remove` removed nothing, both reporting success.
+    let dir = workdir("b6_table_form");
+    let original = "---\n[dependencies]\nitoa = \"1\"\n\n[dependencies.serde]\nversion = \"1\"\nfeatures = [\"derive\"]\n\n[build-dependencies]\ncc = \"1\"\n---\nfn main() {}\n";
+    fs::write(dir.join("t.rs"), original).unwrap();
+    assert_ok(&rsxtk(&dir, &["add", "t.rs", "serde", "1.0.5"]));
+    let added = fs::read_to_string(dir.join("t.rs")).unwrap();
+    assert_eq!(added, "---\n[dependencies]\nitoa = \"1\"\nserde = \"1.0.5\"\n\n[build-dependencies]\ncc = \"1\"\n---\nfn main() {}\n");
+    fs::write(dir.join("t.rs"), original).unwrap();
+    assert_ok(&rsxtk(&dir, &["remove", "t.rs", "serde"]));
+    let removed = fs::read_to_string(dir.join("t.rs")).unwrap();
+    assert_eq!(removed, "---\n[dependencies]\nitoa = \"1\"\n\n[build-dependencies]\ncc = \"1\"\n---\nfn main() {}\n");
+}
+
+#[test]
+fn a_commented_dependencies_header_is_still_the_dependencies_table() {
+    // Review N2a: `[dependencies] # deps` was not recognised, so `add` wrote a second table.
+    let dir = workdir("n2_commented_header");
+    fs::write(dir.join("t.rs"), "---\n[dependencies] # deps\nrand = \"0.8\"\n---\nfn main() {}\n").unwrap();
+    assert_ok(&rsxtk(&dir, &["add", "t.rs", "serde", "1"]));
+    let text = fs::read_to_string(dir.join("t.rs")).unwrap();
+    assert_eq!(text, "---\n[dependencies] # deps\nrand = \"0.8\"\nserde = \"1\"\n---\nfn main() {}\n");
+}
+
+#[test]
+fn remove_ignores_brackets_in_comments_and_strings() {
+    // Review N2c: `# [old` opened a "multi-line entry" and `remove` deleted every later line.
+    let dir = workdir("n2_brackets");
+    let original = "---\n[dependencies]\nserde = \"1\" # [old\nrand = \"1\"\nx = { version = \"2\", path = \"a[b\" }\n\n[features]\ndefault = []\n---\nfn main() {}\n";
+    fs::write(dir.join("t.rs"), original).unwrap();
+    assert_ok(&rsxtk(&dir, &["remove", "t.rs", "serde"]));
+    let text = fs::read_to_string(dir.join("t.rs")).unwrap();
+    assert_eq!(text, "---\n[dependencies]\nrand = \"1\"\nx = { version = \"2\", path = \"a[b\" }\n\n[features]\ndefault = []\n---\nfn main() {}\n");
+}
+
+#[test]
+fn remove_of_an_absent_crate_says_nothing_changed() {
+    let dir = workdir("n2_absent");
+    fs::write(dir.join("t.rs"), SCRIPT).unwrap();
+    let out = rsxtk(&dir, &["remove", "t.rs", "serde"]);
+    assert_ok(&out);
+    assert!(stdout(&out).contains("nothing changed"), "{}", stdout(&out));
+    assert_eq!(fs::read_to_string(dir.join("t.rs")).unwrap(), SCRIPT);
+}
+
+#[test]
+fn add_waits_for_the_scripts_lock() {
+    // Review N3: parallel `add`s all said "Manifest updated" and an entry was lost. A race is too
+    // timing-dependent to test (it passed 3/3 on the unfixed code), so this holds the script's
+    // lock itself and checks that `add` waits for it. The lock's name is rsxtk's
+    // (`lock_script`): the same std `DefaultHasher` over the script's canonical path.
+    use std::hash::{Hash, Hasher};
+    let dir = workdir("n3_lock");
+    fs::write(dir.join("p.rs"), SCRIPT).unwrap();
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    fs::canonicalize(dir.join("p.rs")).unwrap().hash(&mut h);
+    let locks = std::env::temp_dir().join("rsxtk-locks");
+    fs::create_dir_all(&locks).unwrap();
+    let held = fs::OpenOptions::new().create(true).truncate(false).write(true)
+        .open(locks.join(format!("{:016x}.lock", h.finish()))).unwrap();
+    held.lock().unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_rsxtk")).args(["add", "p.rs", "itoa", "1"]).current_dir(&dir).spawn().unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(1500));
+    assert!(child.try_wait().unwrap().is_none(), "add finished while the script's lock was held");
+    assert_eq!(fs::read_to_string(dir.join("p.rs")).unwrap(), SCRIPT);
+    held.unlock().unwrap();
+    assert!(child.wait().unwrap().success());
+    assert!(fs::read_to_string(dir.join("p.rs")).unwrap().contains("itoa = \"1\""));
+}
+
+const TABLE_WAT: &str = r#"(module
+  (table 1 funcref)
+  (func (export "grow") (param i32) (result i32)
+    (table.grow (ref.null func) (local.get 0))))
+"#;
+
+#[test]
+fn guest_tables_are_capped_by_max_memory_too() {
+    // Review N1: `table.grow` took 19.5 GB of host memory under a 64 MiB cap.
+    let dir = workdir("n1_tables");
+    fs::write(dir.join("t.wat"), TABLE_WAT).unwrap();
+    // 64 MiB / 16 = 4 Mi elements: growing by 10 million is refused (-1), by 1000 granted (old size 1).
+    let refused = rsxtk(&dir, &["--max-memory", "64", "mod", "t.wat", "grow", "10000000"]);
+    assert_ok(&refused);
+    assert_eq!(stdout(&refused).trim(), "-1");
+    let granted = rsxtk(&dir, &["--max-memory", "64", "mod", "t.wat", "grow", "1000"]);
+    assert_ok(&granted);
+    assert_eq!(stdout(&granted).trim(), "1");
+}
+
+#[test]
 fn add_to_a_script_with_a_byte_order_mark_keeps_one_manifest() {
     // Review H2: a BOM hid the manifest, and `add` injected a second one in front of it.
     let dir = workdir("h2_bom");
