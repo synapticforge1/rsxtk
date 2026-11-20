@@ -553,6 +553,46 @@ fn csrun_missing_file_fails() {
     assert_fails(&rsxtk(&workdir("csrun_missing"), &["csrun", "nope.rs"]));
 }
 
+// --- review 0.6.0: security ---
+
+/// Creates `out.txt` in its folder (preopen fd 3) and writes "hi"; exits with path_open's errno.
+const WRITE_WAT: &str = r#"(module
+  (import "wasi_snapshot_preview1" "path_open" (func $po (param i32 i32 i32 i32 i32 i64 i64 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "fd_write" (func $fw (param i32 i32 i32 i32) (result i32)))
+  (import "wasi_snapshot_preview1" "proc_exit" (func $exit (param i32)))
+  (memory (export "memory") 1)
+  (data (i32.const 100) "out.txt")
+  (data (i32.const 200) "hi")
+  (func (export "_start") (local $err i32)
+    (local.set $err (call $po (i32.const 3) (i32.const 0) (i32.const 100) (i32.const 7) (i32.const 1)
+      (i64.const 536870911) (i64.const 536870911) (i32.const 0) (i32.const 300)))
+    (if (local.get $err) (then (call $exit (local.get $err))))
+    (i32.store (i32.const 400) (i32.const 200))
+    (i32.store (i32.const 404) (i32.const 2))
+    (drop (call $fw (i32.load (i32.const 300)) (i32.const 400) (i32.const 1) (i32.const 500)))))
+"#;
+
+#[test]
+fn guest_folder_is_read_only_without_allow_write() {
+    // Review S1 (owner: read-only + --allow-write): a guest could create and overwrite any file
+    // beside the module.
+    let dir = workdir("s1_read_only");
+    fs::write(dir.join("w.wat"), WRITE_WAT).unwrap();
+    let out = rsxtk(&dir, &["run", "w.wat"]);
+    assert_fails(&out);
+    assert!(stderr(&out).contains("Exited status"), "{}", stderr(&out));
+    assert!(!dir.join("out.txt").exists());
+}
+
+#[test]
+fn allow_write_lets_the_guest_write_its_folder() {
+    let dir = workdir("s1_allow_write");
+    fs::write(dir.join("w.wat"), WRITE_WAT).unwrap();
+    let out = rsxtk(&dir, &["run", "--allow-write", "w.wat"]);
+    assert_ok(&out);
+    assert_eq!(fs::read_to_string(dir.join("out.txt")).unwrap(), "hi");
+}
+
 // --- review 0.6.0: hardening (unplanned input fails loudly and safely) ---
 
 #[test]

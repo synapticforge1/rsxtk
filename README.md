@@ -42,7 +42,7 @@ rustup target add wasm32-wasip1
 - **Format Support**: Direct support for `.rs`, `.wasm` and `.wat`. Precompiled `.cwasm` files are refused: they are native code that cannot be validated, so they would run outside the sandbox.
 - **WAT ⇄ WASM**: `convert` translates between text and binary; `optimize` rewrites a module through Walrus.
 - **Benchmarking**: `bench` runs a module or script N times and reports the average.
-- **Zero-Config WASI**: Scripts are automatically sandboxed to their own parent directory.
+- **Zero-Config WASI**: Scripts are automatically sandboxed to their own parent directory, read-only unless you pass `--allow-write`.
 
 ---
 
@@ -114,7 +114,7 @@ rsxtk csrun my_script.rs
 | `clean` | `rsxtk clean` | Wipes the `.tk` build cache. |
 | `info` | `rsxtk info <file>` | Shows exported functions with their signatures, and whether the module uses WASI. |
 
-**Guest limits** (`run`, `mod`, `bench`): each memory of a guest may grow to at most 4096 MiB; `--max-memory <MiB>` changes the cap (for example `rsxtk --max-memory 512 run app.wasm`). There is no time limit: a guest that loops forever runs until you stop it with Ctrl-C.
+**The sandbox** (`run`, `mod`, `bench`): a guest sees its own folder as `.`, **read-only**, plus its arguments and stdio — never your environment variables. Pass `--allow-write` to let it create, change and delete files in that folder (for example `rsxtk run --allow-write report.rs`); keep modules from elsewhere in a folder of their own before you do. Each memory of a guest may grow to at most 4096 MiB; `--max-memory <MiB>` changes the cap. There is no time limit: a guest that loops forever runs until you stop it with Ctrl-C.
 
 ---
 
@@ -182,11 +182,17 @@ When you run a `.rs` file, `rsxtk` creates a hidden virtual Cargo project in the
 
 ---
 
+## 🔒 Privacy
+
+`rsxtk` collects nothing and sends no telemetry. Its one network request of its own is `rsxtk add <file> <crate>` without a version, which asks crates.io for that crate's latest version (sending the crate name and an `rsxtk/<version>` User-Agent). Building a script runs `cargo`, which downloads the script's dependencies from crates.io as usual. Build output stays on your machine, in `.tk/` in the current folder; `rsxtk clean` removes it.
+
+---
+
 ## 🛠 Troubleshooting (Windows & Environment)
 
 ### 1. "Access is Denied" or "Path Not Found" (UNC Paths)
 On Windows, if your project is deep within a folder structure, you may encounter errors related to UNC paths (paths starting with `\\?\`).
-* **Solution**: Move the project closer to the root of your drive (e.g., `G:\rsxtk_projects\`).
+* **Solution**: Move the project closer to the root of your drive (e.g., `C:\src\`).
 * **Alternative**: Enable **Long Paths** in Windows via PowerShell (Admin):
   `New-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force`
 

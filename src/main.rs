@@ -16,11 +16,15 @@ struct Cli {
     /// Largest size one guest memory may reach, in MiB (run, mod, bench)
     #[arg(long, global = true, default_value_t = 4096, value_parser = clap::value_parser!(u64).range(1..=1_048_576))]
     max_memory: u64,
+    /// Let the guest create, change and delete files in its folder (run, mod, bench); read-only without it
+    #[arg(long, global = true)]
+    allow_write: bool,
 }
 
-/// What a guest may use: its memory cap (owner, 2026-11-20: a memory cap, no time limit).
+/// What a guest may use (owner, 2026-11-20): its folder read-only unless `--allow-write`, and a
+/// cap on each memory; no time limit.
 #[derive(Clone, Copy)]
-struct Sandbox { max_memory_bytes: usize }
+struct Sandbox { allow_write: bool, max_memory_bytes: usize }
 
 #[derive(Subcommand)]
 #[command(rename_all = "lowercase")]
@@ -75,14 +79,17 @@ enum BuildTarget { Wasi, Wasm, Wat }
 
 struct MyState { wasi: WasiP1Ctx, limits: StoreLimits }
 
-/// A linker with WASI preview 1, and a store whose guest sees the module's folder as `.` and
-/// stdio and arguments — never the environment — with its memories capped by `sandbox`.
+/// A linker with WASI preview 1, and a store whose guest sees the module's folder as `.` —
+/// READ-ONLY unless `--allow-write` (review S1: a module saved into a shared folder could rewrite
+/// every file beside it) — plus stdio and arguments, never the environment, with its memories
+/// capped by `sandbox`.
 fn new_store(engine: &Engine, module_path: &Path, sandbox: Sandbox) -> Result<(Linker<MyState>, Store<MyState>)> {
     let mut linker: Linker<MyState> = Linker::new(engine);
     p1::add_to_linker_sync(&mut linker, |state| &mut state.wasi)?;
     let mut builder = WasiCtxBuilder::new();
     builder.inherit_stdio().inherit_args();
-    builder.preopened_dir(module_path.parent().unwrap(), ".", FsPerms::ReadWrite)?;
+    let perms = if sandbox.allow_write { FsPerms::ReadWrite } else { FsPerms::ReadOnly };
+    builder.preopened_dir(module_path.parent().unwrap(), ".", perms)?;
     let limits = StoreLimitsBuilder::new().memory_size(sandbox.max_memory_bytes).build();
     let mut store = Store::new(engine, MyState { wasi: builder.build_p1(), limits });
     store.limiter(|state| &mut state.limits);
@@ -102,6 +109,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let engine = create_engine()?;
     let sandbox = Sandbox {
+        allow_write: cli.allow_write,
         max_memory_bytes: usize::try_from(cli.max_memory.saturating_mul(1024 * 1024)).unwrap_or(usize::MAX),
     };
 
