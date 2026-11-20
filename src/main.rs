@@ -611,7 +611,7 @@ fn lock_dir() -> PathBuf {
     #[cfg(target_os = "linux")]
     {
         let cache = std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from).filter(|p| p.is_absolute())
-            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")));
+            .or_else(|| std::env::var_os("HOME").map(PathBuf::from).filter(|p| p.is_absolute()).map(|h| h.join(".cache")));
         if let Some(cache) = cache { return cache.join("rsxtk").join("locks"); }
     }
     std::env::temp_dir().join("rsxtk-locks")
@@ -669,8 +669,9 @@ fn edit_manifest(manifest: &str, crate_name: &str, version: Option<&str>) -> Res
         }
         if t.starts_with('[') { // a table header: `[x]` or `[[x]]`
             if in_deps { deps_end = Some(out.len()); }
-            // `[dependencies.serde]`, `[ dependencies . "serde" ]` and the like name one table.
-            let header: String = t.chars().filter(|c| *c != ' ' && *c != '"').collect();
+            // `[dependencies.serde]`, `[ dependencies . "serde" ]`, `[dependencies.'serde']` name one
+            // table: spaces and both kinds of TOML key quotes are ignored (review B8: `'` was not).
+            let header: String = t.chars().filter(|c| !matches!(c, ' ' | '\t' | '"' | '\'')).collect();
             in_deps = header == "[dependencies]";
             if in_deps { deps_end = None; has_deps = true; }
             // The crate's own table and its sub-tables (`[dependencies.serde.features]`, review B7).

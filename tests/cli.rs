@@ -696,7 +696,7 @@ fn lock_dir_like_rsxtk() -> PathBuf {
     #[cfg(target_os = "linux")]
     {
         let cache = std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from).filter(|p| p.is_absolute())
-            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")));
+            .or_else(|| std::env::var_os("HOME").map(PathBuf::from).filter(|p| p.is_absolute()).map(|h| h.join(".cache")));
         if let Some(cache) = cache { return cache.join("rsxtk").join("locks"); }
     }
     std::env::temp_dir().join("rsxtk-locks")
@@ -725,6 +725,17 @@ fn add_refuses_a_manifest_with_multi_line_strings_and_keeps_the_file() {
     assert_fails(&out);
     assert!(stderr(&out).contains("multi-line string"), "{}", stderr(&out));
     assert_eq!(fs::read_to_string(dir.join("t.rs")).unwrap(), original);
+}
+
+#[test]
+fn single_quoted_crate_tables_are_the_crates_too() {
+    // Review B8: `[dependencies.'serde']` (a TOML literal-string key) was not recognised: `add`
+    // defined serde twice and `remove` left `[dependencies.'serde'.features]` behind.
+    let dir = workdir("b8_single_quotes");
+    let original = "---\n[dependencies]\nanyhow = \"1\"\n\n[dependencies.'serde']\nversion = \"1\"\n\n[dependencies.'serde'.features]\nx = 1\n---\nfn main() {}\n";
+    fs::write(dir.join("t.rs"), original).unwrap();
+    assert_ok(&rsxtk(&dir, &["add", "t.rs", "serde", "2"]));
+    assert_eq!(fs::read_to_string(dir.join("t.rs")).unwrap(), "---\n[dependencies]\nanyhow = \"1\"\nserde = \"2\"\n---\nfn main() {}\n");
 }
 
 #[test]
