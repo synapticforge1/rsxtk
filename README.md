@@ -196,7 +196,7 @@ A `build.rs` is a normal program that Cargo compiles and runs on your machine du
 * **Clean Cache**: If builds become corrupted, run `rsxtk clean`.
 
 ### 4. Wasmtime Execution Errors
-* **Unsupported ELF Header**: Occurs if a file is not WebAssembly (for example a `.wat` given a `.wasm` name). Run `rsxtk clean` and try again.
+* **"magic header not detected"**: the file is not a WebAssembly binary — for example WAT text saved with a `.wasm` name. Give a text module the `.wat` extension, or convert it with `rsxtk convert <file>.wat`.
 * **".cwasm … does not run it"**: rsxtk no longer runs precompiled `.cwasm` files (they skip validation). Run the `.wasm`, `.wat` or `.rs` they were made from. A `.tk/` cache from an older rsxtk is rebuilt automatically.
 
 ### 5. Wasmtime Version Compatibility

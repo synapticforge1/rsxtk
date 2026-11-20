@@ -45,7 +45,7 @@ enum Commands {
     /// ⏱️ Benchmark execution speed
     Bench { 
         path: PathBuf, 
-        #[arg(short, long, default_value = "5")] iterations: u32 
+        #[arg(short, long, default_value = "5", value_parser = clap::value_parser!(u32).range(1..))] iterations: u32
     },
     /// ➕ Add a dependency (Auto-injects manifest if missing)
     Add { path: PathBuf, crate_name: String, version: Option<String> },
@@ -254,17 +254,17 @@ fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<(PathBu
     let mirror_build_rs = cache_root.join("build.rs");
     let mirror_rsc = cache_root.join("src/rsc");
 
-    if cached_path.exists() && wasm_output.exists() {
-        let src_mtime = newest_mtime(&[script_path, &build_rs, &rsc_dir])?;
-        let cache_mtime = fs::metadata(&cached_path)?.modified()?;
-
-        // A build.rs or rsc/ that appeared or vanished since the last build also forces a rebuild.
-        let mirror_matches = has_build_rs == mirror_build_rs.exists() && rsc_dir.is_dir() == mirror_rsc.exists();
-
-        if cache_mtime > src_mtime && mirror_matches {
-            return Ok((cached_path, wasm_output));
-        }
+    // The cache is reused only for the exact sources it was built from: the same script (by path
+    // AND content), the same build.rs and the same rsc/ files. Timestamps are not trusted.
+    let fingerprint = source_fingerprint(script_path, has_build_rs.then_some(build_rs.as_path()), &rsc_dir)?;
+    let id_path = cache_root.join("source.id");
+    if cached_path.exists() && wasm_output.exists()
+        && fs::read_to_string(&id_path).is_ok_and(|id| id == fingerprint)
+    {
+        return Ok((cached_path, wasm_output));
     }
+    // A build that fails part-way must not leave the old fingerprint pointing at new sources.
+    let _ = fs::remove_file(&id_path);
 
     fs::create_dir_all(cache_root.join("src"))?;
     let (src_file, stale_file, lib_section) = if is_lib {
@@ -297,6 +297,7 @@ fn build_and_cache_script(engine: &Engine, script_path: &Path) -> Result<(PathBu
     Module::validate(engine, &optimized_wasm)
         .map_err(|e| anyhow!("The optimized module of '{}' does not validate: {}", script_path.display(), e))?;
     fs::write(&cached_path, optimized_wasm)?;
+    fs::write(&id_path, &fingerprint)?;
     // Up to 0.5.2 the cache was a precompiled .cwasm plus a machine id; neither is read any more.
     let _ = fs::remove_file(cache_root.join(format!("{}.cwasm", stem)));
     let _ = fs::remove_file(cache_root.join("machine.id"));
@@ -309,20 +310,39 @@ fn has_main_fn(code: &str) -> bool {
     code.match_indices("fn main").any(|(i, m)| code[i + m.len()..].trim_start().starts_with('('))
 }
 
-/// Latest modification time among `paths`; directories are walked, and count themselves, so a
-/// file removed from one still registers. Missing paths are skipped.
-fn newest_mtime(paths: &[&Path]) -> Result<std::time::SystemTime> {
-    let mut newest = std::time::SystemTime::UNIX_EPOCH;
-    for path in paths {
-        if !path.exists() { continue; }
-        newest = newest.max(fs::metadata(path)?.modified()?);
-        if path.is_dir() {
-            for entry in fs::read_dir(path)? {
-                newest = newest.max(newest_mtime(&[&entry?.path()])?);
-            }
-        }
+/// What a cached module was built from: the script's path and bytes, the bytes of the `build.rs`
+/// mirrored with it (or its absence), and every file under `rsc/` by relative path and bytes. Two
+/// scripts with one name, or an edit that keeps an older timestamp, give different values.
+/// `DefaultHasher::new()` uses fixed keys, so the value is stable for one rsxtk binary; a new
+/// binary may compute another value, which only costs one rebuild.
+fn source_fingerprint(script_path: &Path, build_rs: Option<&Path>, rsc_dir: &Path) -> Result<String> {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    script_path.hash(&mut h);
+    fs::read(script_path)?.hash(&mut h);
+    match build_rs {
+        Some(b) => { 1u8.hash(&mut h); fs::read(b)?.hash(&mut h); }
+        None => 0u8.hash(&mut h),
     }
-    Ok(newest)
+    hash_tree(rsc_dir, Path::new(""), &mut h)?;
+    Ok(format!("{:016x}", h.finish()))
+}
+
+/// Feeds every file under `dir` (sorted, by path relative to the root, then its bytes) to `h`;
+/// a missing `dir` counts as empty but distinct from an empty folder.
+fn hash_tree(dir: &Path, rel: &Path, h: &mut impl std::hash::Hasher) -> Result<()> {
+    use std::hash::Hash;
+    if !dir.is_dir() { 0u8.hash(h); return Ok(()); }
+    1u8.hash(h);
+    let mut entries: Vec<_> = fs::read_dir(dir)?.collect::<std::io::Result<_>>()?;
+    entries.sort_by_key(|e| e.file_name());
+    for entry in entries {
+        let name = rel.join(entry.file_name());
+        name.hash(h);
+        if entry.file_type()?.is_dir() { hash_tree(&entry.path(), &name, h)?; }
+        else { fs::read(entry.path())?.hash(h); }
+    }
+    Ok(())
 }
 
 /// Copies `src` into `dst` recursively, replacing whatever `dst` held.
@@ -499,15 +519,32 @@ fn format_script(path: &Path) -> Result<()> {
 
     let content = fs::read_to_string(path)?;
     let parts: Vec<&str> = content.splitn(3, "---").collect();
-    
-    let temp = path.with_extension("rs.tmp");
-    fs::write(&temp, parts[2])?;
-    let _ = std::process::Command::new("rustfmt").arg(&temp).status();
-    
-    fs::write(path, format!("---\n{}\n---\n{}", parts[1].trim(), fs::read_to_string(&temp)?))?;
-    let _ = fs::remove_file(temp);
+
+    let formatted = rustfmt(parts[2])
+        .map_err(|e| anyhow!("{}\n'{}' is unchanged.", e, path.display()))?;
+    fs::write(path, format!("---\n{}\n---\n{}", parts[1].trim(), formatted))?;
     println!("✨ Formatted {}", path.display());
     Ok(())
+}
+
+/// The code formatted by `rustfmt` as edition 2021 (the edition rsxtk builds scripts with), through
+/// stdin and stdout — no temporary file. A failure (bad syntax, no rustfmt) is an error, never a
+/// silent success.
+fn rustfmt(code: &str) -> Result<String> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let mut child = Command::new("rustfmt")
+        .args(["--edition", "2021"])
+        .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| anyhow!("❌ rustfmt could not be started ({}). Install it: rustup component add rustfmt", e))?;
+    // rustfmt reads all of stdin before it writes, so writing first cannot deadlock.
+    child.stdin.take().ok_or_else(|| anyhow!("rustfmt's stdin is not available"))?.write_all(code.as_bytes())?;
+    let out = child.wait_with_output()?;
+    if !out.status.success() {
+        bail!("❌ rustfmt failed ({}):\n{}", out.status, String::from_utf8_lossy(&out.stderr).trim());
+    }
+    Ok(String::from_utf8(out.stdout)?)
 }
 
 fn optimize_wasm(input: &Path, output: Option<PathBuf>) -> Result<()> {

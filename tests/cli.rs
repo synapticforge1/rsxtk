@@ -141,6 +141,39 @@ fn run_rs_ignores_an_old_cwasm_cache() {
 }
 
 #[test]
+fn scripts_with_one_name_in_two_folders_each_run_their_own() {
+    // Review B1: the cache was keyed by name and timestamp only, so b/p.rs ran a/p.rs's module.
+    let dir = workdir("run_rs_same_name");
+    fs::create_dir_all(dir.join("a")).unwrap();
+    fs::create_dir_all(dir.join("b")).unwrap();
+    fs::write(dir.join("b/p.rs"), "---\n[dependencies]\n---\nfn main() {\n    println!(\"from b\");\n}\n").unwrap();
+    fs::write(dir.join("a/p.rs"), "---\n[dependencies]\n---\nfn main() {\n    println!(\"from a\");\n}\n").unwrap();
+    let a = rsxtk(&dir, &["run", "a/p.rs"]);
+    assert_ok(&a);
+    assert_eq!(stdout(&a), "from a\n");
+    let b = rsxtk(&dir, &["run", "b/p.rs"]);
+    assert_ok(&b);
+    assert_eq!(stdout(&b), "from b\n");
+}
+
+#[test]
+fn run_rs_rebuilds_an_edit_with_an_older_timestamp() {
+    // Review B1: an edit that keeps an older mtime (cp -p, unzip, a restore) was not rebuilt.
+    let dir = workdir("run_rs_old_mtime");
+    fs::write(dir.join("t.rs"), SCRIPT).unwrap();
+    assert_eq!(stdout(&rsxtk(&dir, &["run", "t.rs"])), "script ran\n");
+    let file = fs::OpenOptions::new().write(true).open(dir.join("t.rs")).unwrap();
+    file.set_len(0).unwrap();
+    drop(file);
+    fs::write(dir.join("t.rs"), "---\n[dependencies]\n---\nfn main() {\n    println!(\"edited\");\n}\n").unwrap();
+    let old = std::time::SystemTime::now() - std::time::Duration::from_secs(3 * 24 * 3600);
+    fs::OpenOptions::new().write(true).open(dir.join("t.rs")).unwrap().set_modified(old).unwrap();
+    let out = rsxtk(&dir, &["run", "t.rs"]);
+    assert_ok(&out);
+    assert_eq!(stdout(&out), "edited\n");
+}
+
+#[test]
 fn run_rs_without_manifest_fails() {
     let dir = workdir("run_rs_nomanifest");
     fs::write(dir.join("bare.rs"), "fn main() {}\n").unwrap();
@@ -332,6 +365,16 @@ fn bench_missing_file_fails() {
     assert_fails(&rsxtk(&workdir("bench_missing"), &["bench", "nope.wat"]));
 }
 
+#[test]
+fn bench_zero_iterations_is_refused_not_a_panic() {
+    // Review B3: `-i 0` divided by zero (exit 101).
+    let dir = workdir("bench_zero");
+    fs::write(dir.join("hello.wat"), HELLO_WAT).unwrap();
+    let out = rsxtk(&dir, &["bench", "hello.wat", "-i", "0"]);
+    assert_eq!(out.status.code(), Some(2), "stderr:\n{}", stderr(&out));
+    assert!(!stderr(&out).contains("panicked"), "{}", stderr(&out));
+}
+
 // --- add / remove / list ---
 
 #[test]
@@ -412,6 +455,30 @@ fn fmt_formats_code_and_keeps_the_manifest() {
 #[test]
 fn fmt_missing_file_fails() {
     assert_fails(&rsxtk(&workdir("fmt_missing"), &["fmt", "nope.rs"]));
+}
+
+#[test]
+fn fmt_formats_as_edition_2021() {
+    // Review B2: rustfmt ran as edition 2015 and refused `async fn`, and rsxtk said "Formatted".
+    let dir = workdir("fmt_2021");
+    fs::write(dir.join("a.rs"), "---\n[dependencies]\n---\nasync fn   f( ){}\nfn main(){  }\n").unwrap();
+    assert_ok(&rsxtk(&dir, &["fmt", "a.rs"]));
+    let text = fs::read_to_string(dir.join("a.rs")).unwrap();
+    assert!(text.contains("async fn f() {}"), "{}", text);
+    assert!(text.contains("fn main() {}"), "{}", text);
+}
+
+#[test]
+fn fmt_of_code_rustfmt_rejects_fails_and_keeps_the_file() {
+    // Review B2: a rustfmt failure was reported as success (exit 0).
+    let dir = workdir("fmt_reject");
+    let original = "---\n[dependencies]\n---\nfn main( {\n";
+    fs::write(dir.join("bad.rs"), original).unwrap();
+    let out = rsxtk(&dir, &["fmt", "bad.rs"]);
+    assert_fails(&out);
+    assert!(!stdout(&out).contains("Formatted"), "{}", stdout(&out));
+    assert!(stderr(&out).contains("rustfmt failed"), "{}", stderr(&out));
+    assert_eq!(fs::read_to_string(dir.join("bad.rs")).unwrap(), original);
 }
 
 // --- optimize ---
