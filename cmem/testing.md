@@ -61,7 +61,8 @@ script tests, `cargo audit` 0 vulnerabilities, licences 269 packages allowed.
 the new tests against the previous commit's `src/main.rs` (exact bytes via `cmd /c "git show … >"`,
 then touched: best-practices R.6). A race-based lock test that passed on the unfixed code was
 replaced by a deterministic one (it holds the lock and sees `add` wait). The full suite and every
-gate passed once on win-x64 at 4f2afa6.
+gate passed once on win-x64 at 4f2afa6. At "release", `github-release.test.ts` gained 2 tests for
+the H37 `Tested on` lines (73 → 75 script tests; 2 mutants caught).
 
 Use `CARGO_TARGET_DIR` on NTFS and SHORT: a deep path breaks MinGW `dlltool` in `windows-sys`
 ("Can't open def file"); `%TEMP%\rsxtk-t` works (`local/environment.md`).

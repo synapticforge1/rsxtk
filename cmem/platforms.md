@@ -15,12 +15,12 @@ the Rust host triple it was built and tested as.
 | win-arm64 | pending | aarch64-pc-windows-gnullvm | — |
 | mac-x64 | pending | x86_64-apple-darwin | — |
 | mac-arm64 | pending | aarch64-apple-darwin | — |
-| linux-x64 | pending | x86_64-unknown-linux-gnu | — |
+| linux-x64 | tested | x86_64-unknown-linux-gnu | the development machine's WSL 2 (Ubuntu only) |
 | linux-arm64 | pending | aarch64-unknown-linux-gnu | — |
 
 - Until 0.5.2, CI's `checks` job ran the gate on GitHub's `ubuntu-latest` (linux-x64). That was CI,
-  not a test machine; the tests left CI on 2026-11-19 (H37 (e)); linux-x64 stays `pending` until
-  a local run on a named distro. CI still runs `cargo package` there for a release (a build, not
+  not a test machine; the tests left CI on 2026-11-19 (H37 (e)); linux-x64 is `tested` since the
+  local WSL run of 2026-11-20 (Ubuntu; below). CI still runs `cargo package` there for a release (a build, not
   a test).
 - A release states one `Tested on: <OS and version> (<platform ID>)` line per platform actually run
   — on the Release page, in its `release.md` entry and in the README — and "other platforms: not
@@ -30,7 +30,14 @@ the Rust host triple it was built and tested as.
 
 | Distro | Version | Platform | Date |
 | --- | --- | --- | --- |
-| — | — | — | none yet |
+| Ubuntu | 26.04.1 LTS (WSL 2, kernel 6.18) | linux-x64 | 2026-11-20 |
+
+- 2026-11-20, the first linux-x64 run (a clean clone in the WSL home, `nightly-2026-11-04`, the
+  distro's gcc for wasmtime's two C files): it found that clippy failed on unix only and that the
+  lock folder could stay 0755 — both fixed (`78812de`) before 0.6.0. Then: release build, clippy 0,
+  `cargo test` 76/76 (incl. the linux-only lock-folder test), `bun test scripts/` 75/75, surface,
+  privacy, licences, cmem all green. `cargo audit` reads only `Cargo.lock` (same on every platform)
+  and ran on win-x64. WSL proves Ubuntu only (owner); other distros wait for the Parallels guests.
 
 - **glibc 2.28 baseline:** unaffected — rsxtk publishes no Linux binary; a user's build links the
   user's own glibc. No musl build is made (none is shipped).

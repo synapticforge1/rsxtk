@@ -22,7 +22,7 @@ item lists word for word plus the scope; they are not copied here.
 
 ## Last review
 
-- Review complete: 4f2afa6
+- Review complete: 940e335
 - For 0.6.0, 2026-11-20 (owner: "review"); scope `rsxtk_v0.5.2..264b408`, branch `review/0.6.0`.
   First review 22 findings (basic 4, hardening 14 — one of them, H7, rejected by the owner's
   decision — security 2, privacy 2, licensing 0) + 1 owner question; the five re-review rounds found
@@ -32,6 +32,17 @@ item lists word for word plus the scope; they are not copied here.
   `cargo test` 75/75, `bun test scripts/` 73/73, check-privacy, check-licences (269), `cargo audit`
   0 vulnerabilities, check-cmem. `compat.ts --release` runs at the bump (it refuses an already
   released version by design). Other platforms: pending (`platforms.md`).
+- At "release" (2026-11-20) the H37 `Tested on` lines were found missing and added (9f13e9b: README,
+  the Release page from the README at the released commit, a `release.ts` guard); re-reviewed by
+  basic, hardening + security and privacy — all empty at the floor. Below the floor, noted:
+  `release.ts`'s README guard has no test of its own (its twin in `github-release.ts` has).
+- Then the owner asked "did we run the checks on wsl?": the first linux-x64 run (WSL 2, Ubuntu
+  26.04.1 LTS) found clippy failing on unix and the lock folder staying 0755 — fixed in 78812de
+  (linux-only test, failing on 9f13e9b); the full suite then passed on linux-x64 (cargo test 76/76,
+  clippy 0, bun 75, every gate but `cargo audit`, which reads only the lockfile). README 940e335 adds
+  the linux-x64 Tested on line. Re-review 7 (two agents for a two-line change: basic + hardening,
+  security + privacy — a recorded deviation) was empty → **Review complete: 940e335**.
+- Platforms passed for 0.6.0: win-x64 (Windows 11), linux-x64 (Ubuntu 26.04.1 LTS under WSL 2).
 
 ## Slots
 

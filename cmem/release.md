@@ -49,7 +49,10 @@ was not given.** Run from the repo root on `main`, with `CARGO_TARGET_DIR` on NT
      `rsxtk_vX.Y.Z` on `github.sha` via `git/tags` + `git/refs`, read back; already here = done,
      elsewhere = refused (a published tag never moves).
    - **U7 `release`** {contents: write; no checkout}: `github-release.ts page` — the Release page
-     "rsxtk X.Y.Z" FROM the tag, H32's order, the crates.io link on top, BEFORE the publish.
+     "rsxtk X.Y.Z" FROM the tag, H32's order, BEFORE the publish; its notes open with the README's
+     `Tested on: <OS> (<platform ID>)` lines and "Other platforms: …" (read from README.md at the
+     released commit; none → refused, H37), then the crates.io link. `release.ts` refuses earlier,
+     before the push, when the README has no such line.
    - **U8 `publish`** {id-token: write, contents: read}: the tag still peels here; skip when
      crates.io already lists the version; **crates.io trusted publishing** (owner's D2) — GitHub
      OIDC (audience `crates.io`) → `POST /api/v1/trusted_publishing/tokens` → a short-lived token;
